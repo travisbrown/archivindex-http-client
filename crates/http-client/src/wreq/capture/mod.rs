@@ -19,7 +19,7 @@ use super::{WreqClient, transport_error};
 use crate::framing::{ResponseCapture, ResponseError, Truncation};
 use crate::message::ResponseMetadata;
 use crate::reconstruct::reconstruct_request;
-use crate::{CapturedExchange, Error, Fidelity, Request, TlsVersion, failure};
+use crate::{CapturedExchange, Error, Fidelity, Request, TlsVersion, failure, request};
 
 impl WreqClient {
     /// Build the isolated `wreq` client with the selected transport settings and capture observer.
@@ -79,7 +79,7 @@ impl WreqClient {
         headers.remove(header::TRANSFER_ENCODING);
         headers.remove(header::CONTENT_LENGTH);
         let mut request = client
-            .request(method.clone(), target.to_string())
+            .request(method.clone(), request::target(target).to_string())
             .headers(headers);
         if let Some(body) = body {
             request = request.body(body.to_vec());

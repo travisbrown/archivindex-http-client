@@ -52,6 +52,10 @@ Every client adds a `host` header when the caller supplies none, and an HTTP/1.1
 client drops `transfer-encoding` and `content-length` headers that the caller supplies, and frames
 a provided body with `content-length`.
 
+Userinfo in the target is never sent. Credentials reach the origin only in an `authorization`
+header that the caller supplies, while `CapturedExchange::target_uri` keeps the URI as it was
+given.
+
 ## Captured exchanges
 
 A `CapturedExchange` holds the stored request and response messages, both in HTTP/1 form, and these

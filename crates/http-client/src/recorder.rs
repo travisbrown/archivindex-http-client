@@ -170,7 +170,8 @@ impl Client for Recorder {
             Some("https") => true,
             _ => return Err(Error::UnsupportedScheme),
         };
-        let authority = target.authority().ok_or(Error::MissingHost)?;
+        let sent_target = request::target(target);
+        let authority = sent_target.authority().ok_or(Error::MissingHost)?;
         let raw_host = authority.host();
         if raw_host.is_empty() {
             return Err(Error::MissingHost);
@@ -180,13 +181,13 @@ impl Client for Recorder {
             .strip_prefix('[')
             .and_then(|inner| inner.strip_suffix(']'))
             .unwrap_or(raw_host);
-        let port = target.port_u16().unwrap_or(if tls { 443 } else { 80 });
+        let port = sent_target.port_u16().unwrap_or(if tls { 443 } else { 80 });
 
         let target_string = target.to_string();
         let target_uri = Uri::parse(target_string.as_str())?.to_owned();
 
         let prepared = request::headers(authority, headers);
-        let request = reconstruct_request(method, target, Version::HTTP_11, &prepared, body);
+        let request = reconstruct_request(method, &sent_target, Version::HTTP_11, &prepared, body);
 
         let date = Utc::now();
         let clock = Instant::now();

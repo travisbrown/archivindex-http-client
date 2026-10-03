@@ -178,6 +178,48 @@ fn frames_and_stores_a_request_body() {
     assert_eq!(captured.response, response);
 }
 
+/// Credentials reach the origin only in an `authorization` header from the caller. Userinfo in
+/// the target is not sent in any form, where `reqwest` and `wreq` would turn it into `Basic`
+/// credentials by themselves. `target_uri` remains the URI the caller asked for.
+#[test]
+fn sends_credentials_only_from_an_authorization_header() {
+    for explicit in [None, Some("Bearer token")] {
+        let (port, capture) = serve(b"HTTP/1.1 204 No Content\r\n\r\n");
+        let target: Uri = format!("http://user:p%40ss@127.0.0.1:{port}/")
+            .parse()
+            .expect("a target");
+        let headers = explicit
+            .map(|value| (http::header::AUTHORIZATION, HeaderValue::from_static(value)))
+            .into_iter()
+            .collect::<HeaderMap>();
+
+        let captured = client()
+            .fetch(Request {
+                headers: &headers,
+                ..get(&target)
+            })
+            .expect("a captured exchange");
+
+        assert_eq!(captured.request, capture.join().expect("a served request"));
+        let request = String::from_utf8_lossy(&captured.request).to_ascii_lowercase();
+        assert_eq!(
+            request.matches("authorization:").count(),
+            usize::from(explicit.is_some()),
+            "{request}"
+        );
+        assert_eq!(
+            request.matches("authorization: bearer token\r\n").count(),
+            usize::from(explicit.is_some()),
+            "{request}"
+        );
+        assert!(
+            request.contains(&format!("host: 127.0.0.1:{port}\r\n")),
+            "{request}"
+        );
+        assert_eq!(captured.target_uri.as_str(), target.to_string());
+    }
+}
+
 /// The body given to a fetch frames the request, so the caller's own framing headers never reach
 /// the origin. Without a body they would declare one that is not sent, and the origin would wait
 /// for it.

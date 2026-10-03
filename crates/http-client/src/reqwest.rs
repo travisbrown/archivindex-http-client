@@ -187,7 +187,8 @@ impl ReqwestClient {
             headers,
             body,
         } = request;
-        let url = reqwest::Url::parse(target_uri.as_str()).map_err(other)?;
+        let target = request::target(target);
+        let url = reqwest::Url::parse(&target.to_string()).map_err(other)?;
         // `reqwest` sends the target as the URL Standard normalizes it, so the stored request
         // names that target.
         let sent_target = url.as_str().parse::<http::Uri>().map_err(other)?;
