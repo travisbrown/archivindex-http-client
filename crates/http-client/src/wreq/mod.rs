@@ -24,7 +24,7 @@ use wreq_util::Profile;
 
 use crate::{
     CapturedExchange, Client, DEFAULT_MAX_RESPONSE_LENGTH, DEFAULT_TIMEOUT, Error, InvalidProxy,
-    Request, runtime, socks,
+    Request, failure, runtime, socks,
 };
 
 /// An isolated HTTP/1 and HTTP/2 client using `BoringSSL` and browser emulation.
@@ -157,9 +157,11 @@ pub fn parse_profile(name: &str) -> Result<Profile, UnknownProfile> {
         .map_err(|_| UnknownProfile(name.to_owned()))
 }
 
-/// Report a wreq failure through the catch-all error variant.
-fn other(error: wreq::Error) -> Error {
-    Error::Other(Box::new(error))
+/// Report a wreq failure as an I/O error of the kind that caused it, when one did.
+fn transport_error(error: wreq::Error) -> Error {
+    let timed_out = error.is_timeout();
+
+    failure::error(error, timed_out)
 }
 
 impl Client for WreqClient {

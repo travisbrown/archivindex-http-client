@@ -85,9 +85,11 @@ The response limit counts stored message bytes, including the header section and
 A response that ends exactly at the limit is complete, not truncated.
 
 Failures are reported in the same way by every client. A failure before a complete response header
-section is an error, as is a header section that does not fit the response limit. After the header
-section, a size limit, a disconnect, a timeout, or a passed deadline returns the response received
-so far, with `truncated` set.
+section is an error, as is a header section that does not fit the response limit. A failure with an
+I/O cause is an `Error::Io` of that kind, so a refused connection can be told from a timeout, and a
+header section that does not arrive in time is a timed-out I/O error. After the header section, a
+size limit, a disconnect, a timeout, or a passed deadline returns the response received so far,
+with `truncated` set.
 
 The timeouts cover slightly different spans in each client:
 

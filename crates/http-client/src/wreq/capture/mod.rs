@@ -15,11 +15,11 @@ use wreq::IntoEmulation;
 use wreq::connection_observer::{ConnectionEvent, ConnectionObserver};
 use wreq::header::OrigHeaderMap;
 
-use super::{WreqClient, other};
+use super::{WreqClient, transport_error};
 use crate::framing::{ResponseCapture, ResponseError, Truncation};
 use crate::message::ResponseMetadata;
 use crate::reconstruct::reconstruct_request;
-use crate::{CapturedExchange, Error, Fidelity, Request, TlsVersion};
+use crate::{CapturedExchange, Error, Fidelity, Request, TlsVersion, failure};
 
 impl WreqClient {
     /// Build the isolated `wreq` client with the selected transport settings and capture observer.
@@ -54,7 +54,7 @@ impl WreqClient {
         if let Some(store) = &self.cert_store {
             builder = builder.tls_cert_store(store.clone());
         }
-        let client = builder.build().map_err(other)?;
+        let client = builder.build().map_err(transport_error)?;
         Ok((client, orig_headers))
     }
 
@@ -84,7 +84,8 @@ impl WreqClient {
         if let Some(body) = body {
             request = request.body(body.to_vec());
         }
-        let mut request: http::Request<wreq::Body> = request.build().map_err(other)?.into();
+        let mut request: http::Request<wreq::Body> =
+            request.build().map_err(transport_error)?.into();
         http2::observe_headers(&mut request, orig_headers, tap.clone());
         let sent_target = request.uri().clone();
         let date = Utc::now();
@@ -191,9 +192,9 @@ impl State {
     /// Close the capture because the transport ended or ran out of time.
     fn end(&mut self, reason: Option<Truncation>) {
         if self.error.is_none()
-            && let Err(error) = self.response.end(reason)
+            && let Err(error) = failure::end(&mut self.response, reason)
         {
-            self.error = Some(error.into());
+            self.error = Some(error);
         }
     }
 
@@ -271,7 +272,10 @@ impl Tap {
         request: http::Request<wreq::Body>,
         head: bool,
     ) -> Result<(), Error> {
-        let mut response = client.execute(request.into()).await.map_err(other)?;
+        let mut response = client
+            .execute(request.into())
+            .await
+            .map_err(transport_error)?;
         let h2 = response.version() == Version::HTTP_2;
         if h2 {
             self.h2_head(response.status(), response.headers(), head)?;
@@ -292,7 +296,7 @@ impl Tap {
                     self.end(None);
                     return Ok(());
                 }
-                Err(error) => return Err(other(error)),
+                Err(error) => return Err(transport_error(error)),
             }
         }
         if h2 {

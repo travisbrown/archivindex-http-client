@@ -25,6 +25,7 @@
 
 pub mod body;
 mod chunked;
+mod failure;
 pub mod framing;
 pub mod message;
 mod parsing;

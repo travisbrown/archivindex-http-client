@@ -292,6 +292,48 @@ fn a_passed_deadline_fails_before_connecting() {
     ));
 }
 
+/// A response header section that does not arrive in time is a timed-out I/O operation, whether
+/// none or part of it arrived, and whether the I/O timeout or the deadline passed. The error for an
+/// incomplete header section would say that the connection ended, which it has not.
+#[test]
+fn a_timeout_before_the_header_section_is_a_timed_out_operation() {
+    for response in [b"".as_slice(), b"HTTP/1.1 200"] {
+        for by_deadline in [false, true] {
+            let (port, server) = serve_then(response, Duration::from_millis(700));
+            let target = target(port, "/");
+            let wait = Duration::from_millis(200);
+
+            let result = if by_deadline {
+                client().fetch_by(get(&target), Instant::now() + wait)
+            } else {
+                client().io_timeout(Some(wait)).fetch(get(&target))
+            };
+
+            assert!(
+                matches!(&result, Err(Error::Io(error)) if error.kind() == ErrorKind::TimedOut),
+                "{result:?}"
+            );
+            server.join().expect("a served request");
+        }
+    }
+}
+
+/// A refused connection keeps its I/O error kind, so a caller can tell it from other failures.
+#[test]
+fn a_refused_connection_keeps_its_error_kind() {
+    let port = TcpListener::bind("127.0.0.1:0")
+        .and_then(|listener| listener.local_addr())
+        .expect("a free port")
+        .port();
+
+    let result = client().fetch(get(&target(port, "/")));
+
+    assert!(
+        matches!(&result, Err(Error::Io(error)) if error.kind() == ErrorKind::ConnectionRefused),
+        "{result:?}"
+    );
+}
+
 #[test]
 fn a_non_http_scheme_is_refused() {
     let target: Uri = "ftp://example.com/".parse().expect("a target");

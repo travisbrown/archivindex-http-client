@@ -25,8 +25,6 @@
 //! The negotiated TLS version is reported for direct connections only, because `reqwest` does not
 //! expose it for a connection made through a SOCKS proxy.
 
-use std::error::Error as _;
-use std::io::ErrorKind;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -41,7 +39,7 @@ use crate::message::ResponseMetadata;
 use crate::reconstruct::{reconstruct_request, reconstruct_response};
 use crate::{
     CapturedExchange, Client, DEFAULT_MAX_RESPONSE_LENGTH, DEFAULT_TIMEOUT, Error, Fidelity,
-    InvalidProxy, Request, TlsVersion, chunked, request, runtime, socks, tls,
+    InvalidProxy, Request, TlsVersion, chunked, failure, request, runtime, socks, tls,
 };
 
 /// Performs HTTP/1.1 exchanges with `reqwest` and reconstructs their messages.
@@ -210,12 +208,7 @@ impl ReqwestClient {
         let response = self
             .wait(deadline, client.execute(request))
             .await
-            .ok_or_else(|| {
-                std::io::Error::new(
-                    ErrorKind::TimedOut,
-                    "no response header section arrived in time",
-                )
-            })?
+            .ok_or_else(failure::timed_out)?
             .map_err(transport_error)?;
 
         let ip_address = response
@@ -241,7 +234,7 @@ impl ReqwestClient {
                 None => capture.end(Some(Truncation::Time))?,
                 Some(None) if chunked => capture.push(&chunked::last_chunk(&trailers))?,
                 Some(None) => capture.end(None)?,
-                Some(Some(Err(error))) if is_disconnect(&error) => {
+                Some(Some(Err(error))) if failure::is_disconnect(&error) => {
                     capture.end(Some(Truncation::Disconnect))?;
                 }
                 Some(Some(Err(error))) => return Err(transport_error(error)),
@@ -336,34 +329,11 @@ const fn tls_version(version: reqwest::tls::Version) -> Option<TlsVersion> {
     }
 }
 
-/// The kind of the I/O error that caused a `reqwest` failure, if one did.
-fn io_kind(error: &reqwest::Error) -> Option<ErrorKind> {
-    if error.is_timeout() {
-        Some(ErrorKind::TimedOut)
-    } else {
-        std::iter::successors(error.source(), |source| (*source).source())
-            .find_map(|source| source.downcast_ref::<std::io::Error>())
-            .map(std::io::Error::kind)
-    }
-}
-
-/// Whether a body error means that the transport stopped before the message ended.
-///
-/// These are the kinds a blocking read reports for the same event. Malformed chunk framing has
-/// other kinds, and is an error instead of a truncation.
-fn is_disconnect(error: &reqwest::Error) -> bool {
-    matches!(
-        io_kind(error),
-        Some(ErrorKind::UnexpectedEof | ErrorKind::ConnectionReset)
-    )
-}
-
 /// Report a `reqwest` failure as an I/O error of the kind that caused it, when one did.
 fn transport_error(error: reqwest::Error) -> Error {
-    match io_kind(&error) {
-        Some(kind) => std::io::Error::new(kind, error).into(),
-        None => other(error),
-    }
+    let timed_out = error.is_timeout();
+
+    failure::error(error, timed_out)
 }
 
 fn other(error: impl std::error::Error + Send + Sync + 'static) -> Error {

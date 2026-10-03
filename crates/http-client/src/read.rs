@@ -2,8 +2,8 @@
 
 use std::io::{ErrorKind, Read};
 
-use crate::Error;
 use crate::framing::{ResponseCapture, Truncation};
+use crate::{Error, failure};
 
 const READ_LENGTH: usize = 8 * 1024;
 
@@ -57,7 +57,7 @@ pub fn read_response(
             ReadEvent::Data(read) => capture.push(&bytes[..read])?,
             ReadEvent::Closed => capture.end(None)?,
             ReadEvent::Disconnected => capture.end(Some(Truncation::Disconnect))?,
-            ReadEvent::TimedOut => capture.end(Some(Truncation::Time))?,
+            ReadEvent::TimedOut => failure::end(&mut capture, Some(Truncation::Time))?,
         }
     }
     Ok(capture.into_parts())
