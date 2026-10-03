@@ -131,6 +131,9 @@ The stored response differs from the origin's bytes in these ways:
   Chunk boundaries are therefore not necessarily the origin's, and chunk extensions are lost.
   Trailers are kept.
 
+Content coding is kept. The backend turns off each of `reqwest`'s decoders, so this holds even when
+another crate in the build enables `reqwest`'s `gzip`, `brotli`, `deflate`, or `zstd` feature.
+
 The negotiated TLS version is reported for direct connections only, because `reqwest` does not
 expose it for a connection made through a SOCKS proxy.
 

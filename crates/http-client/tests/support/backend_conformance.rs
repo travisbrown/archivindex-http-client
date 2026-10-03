@@ -112,6 +112,30 @@ fn stores_a_close_delimited_response_to_the_close() {
     assert_eq!(captured.truncated, None);
 }
 
+/// Content coding belongs to the entity-body, so the stored response keeps it and the stored
+/// request is still the one the origin received. These tests build `reqwest` with its decoders,
+/// which would otherwise ask for a coding the caller did not and decode the response.
+#[test]
+fn stores_a_content_coded_response_as_the_origin_sent_it() {
+    let responses: [&[u8]; 4] = [
+        b"HTTP/1.1 200 OK\r\ncontent-encoding: br\r\ncontent-length: 7\r\n\r\nencoded",
+        b"HTTP/1.1 200 OK\r\ncontent-encoding: deflate\r\ncontent-length: 7\r\n\r\nencoded",
+        b"HTTP/1.1 200 OK\r\ncontent-encoding: gzip\r\ncontent-length: 7\r\n\r\nencoded",
+        b"HTTP/1.1 200 OK\r\ncontent-encoding: zstd\r\ncontent-length: 7\r\n\r\nencoded",
+    ];
+
+    for response in responses {
+        let (port, capture) = serve(response);
+
+        let captured = fetch(&backend(), port, "/coded");
+
+        assert_eq!(captured.request, capture.join().expect("a served request"));
+        assert_eq!(captured.response, response);
+        assert_eq!(captured.entity_body().unwrap().as_ref(), b"encoded");
+        assert_eq!(captured.truncated, None);
+    }
+}
+
 #[test]
 fn stores_a_head_response_through_its_header_section() {
     let response: &[u8] = b"HTTP/1.1 200 OK\r\ncontent-length: 5\r\n\r\n";

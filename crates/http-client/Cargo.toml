@@ -49,6 +49,8 @@ criterion.workspace = true
 h2.workspace = true
 # The TLS tests serve self-signed certificates.
 rcgen.workspace = true
+# Another crate in a consumer's build can enable these decoders, so the tests run with them enabled.
+reqwest = { workspace = true, features = ["brotli", "deflate", "gzip", "zstd"] }
 tokio = { workspace = true, features = ["net"] }
 tokio-rustls.workspace = true
 
