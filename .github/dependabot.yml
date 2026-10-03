@@ -5,7 +5,7 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    # One pull request for the workspace, since every job builds it as a whole.
+    # One pull request for all updates, since every job builds the package as a whole.
     groups:
       cargo:
         patterns: ["*"]

@@ -64,7 +64,7 @@ jobs:
         run: >-
           cargo install --locked --git https://github.com/travisbrown/archivindex
           --rev cca1c5b05d954ccedfc4321099322caf4f526cee cargo-archivindex-build
-      - name: Check the workspace
+      - name: Check the manifest
         run: cargo archivindex-build check
 
   build:
@@ -77,18 +77,18 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - name: Lint
-        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+        run: cargo clippy --locked --all-targets -- -D warnings
       - name: Check documentation
-        run: cargo doc --locked --workspace --no-deps
+        run: cargo doc --locked --no-deps
         env:
           RUSTDOCFLAGS: -D warnings
       - name: Build
-        run: cargo build --locked --workspace --all-targets
+        run: cargo build --locked --all-targets
       - name: Test
-        run: cargo test --locked --workspace
+        run: cargo test --locked
       # Runs each benchmark case once, which `cargo test` does not do without `--benches`.
       - name: Smoke-test the benchmarks
-        run: cargo test --locked --workspace --benches
+        run: cargo test --locked --benches
 
   wreq:
     name: Build, test, lint, and document with the wreq feature
@@ -103,13 +103,13 @@ jobs:
       - name: Install the native toolchain
         run: sudo apt-get update && sudo apt-get install -y cmake libclang-dev
       - name: Lint
-        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
       - name: Check documentation
-        run: cargo doc --locked --workspace --all-features --no-deps
+        run: cargo doc --locked --all-features --no-deps
         env:
           RUSTDOCFLAGS: -D warnings
       - name: Test
-        run: cargo test --locked --workspace --all-features
+        run: cargo test --locked --all-features
 
   fresh-deps:
     name: Test with the newest compatible dependencies
@@ -124,9 +124,9 @@ jobs:
       - name: Update dependencies
         run: cargo update
       - name: Lint
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings
       - name: Test
-        run: cargo test --workspace
+        run: cargo test
 
   package:
     name: Package the crate
@@ -137,7 +137,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       # Build the tarball to check that the crate contains everything it needs.
       - name: Package
-        run: cargo package --locked --workspace
+        run: cargo package --locked
 
   deny:
     name: Check the dependency policy
@@ -146,8 +146,8 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@cargo-deny
-      - name: Check the workspace
-        run: cargo deny --workspace check
+      - name: Check the dependencies
+        run: cargo deny check
 
   # The `wreq` feature needs a later Rust version, so this job leaves it out.
   msrv:
@@ -159,8 +159,8 @@ jobs:
         with:
           toolchain: 1.88.0
       - uses: Swatinem/rust-cache@v2
-      - name: Check workspace
-        run: cargo check --locked --workspace --all-targets
+      - name: Check
+        run: cargo check --locked --all-targets
 
   platforms:
     name: Test on ${{ matrix.os }}
@@ -174,4 +174,4 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Test
-        run: cargo test --locked --workspace
+        run: cargo test --locked
