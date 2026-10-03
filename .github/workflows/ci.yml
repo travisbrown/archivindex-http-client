@@ -86,6 +86,9 @@ jobs:
         run: cargo build --locked --workspace --all-targets
       - name: Test
         run: cargo test --locked --workspace
+      # Runs each benchmark case once, which `cargo test` does not do without `--benches`.
+      - name: Smoke-test the benchmarks
+        run: cargo test --locked --workspace --benches
 
   wreq:
     name: Build, test, lint, and document with the wreq feature
