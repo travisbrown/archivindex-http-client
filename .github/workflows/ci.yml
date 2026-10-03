@@ -1,0 +1,174 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  format:
+    name: Formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt
+      - name: Check formatting
+        run: cargo +nightly fmt --all -- --check
+
+  markdown:
+    name: Markdown formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: rumdl@0.2.73
+      - name: Check formatting
+        run: rumdl check .
+
+  toml:
+    name: TOML formatting and lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # Pinned to a minor version because formatting output can change between releases.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: taplo@0.10
+      - name: Check formatting
+        run: taplo fmt --check --diff
+      # Validates the Cargo manifests and other configuration against their published schemas.
+      - name: Lint
+        run: taplo lint
+
+  policy:
+    name: Check the manifest policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install the policy checker
+        run: >-
+          cargo install --locked --git https://github.com/travisbrown/archivindex
+          --rev cca1c5b05d954ccedfc4321099322caf4f526cee cargo-archivindex-build
+      - name: Check the workspace
+        run: cargo archivindex-build check
+
+  build:
+    name: Build, test, lint, and document
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Lint
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: Check documentation
+        run: cargo doc --locked --workspace --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
+      - name: Build
+        run: cargo build --locked --workspace --all-targets
+      - name: Test
+        run: cargo test --locked --workspace
+
+  wreq:
+    name: Build, test, lint, and document with the wreq feature
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      # The feature builds BoringSSL from source, which bindgen needs libclang for.
+      - name: Install the native toolchain
+        run: sudo apt-get update && sudo apt-get install -y cmake libclang-dev
+      - name: Lint
+        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+      - name: Check documentation
+        run: cargo doc --locked --workspace --all-features --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
+      - name: Test
+        run: cargo test --locked --workspace --all-features
+
+  fresh-deps:
+    name: Test with the newest compatible dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      # The lockfile keeps the other jobs reproducible; this one deliberately updates it to catch
+      # breakage from semver-compatible dependency releases before a user hits it.
+      - name: Update dependencies
+        run: cargo update
+      - name: Lint
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Test
+        run: cargo test --workspace
+
+  package:
+    name: Package the crate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # Build the tarball to check that the crate contains everything it needs.
+      - name: Package
+        run: cargo package --locked --workspace
+
+  deny:
+    name: Check the dependency policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-deny
+      - name: Check the workspace
+        run: cargo deny --workspace check
+
+  # The `wreq` feature needs a later Rust version, so this job leaves it out.
+  msrv:
+    name: Rust 1.88 compatibility
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.88.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Check workspace
+        run: cargo check --locked --workspace --all-targets
+
+  platforms:
+    name: Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Test
+        run: cargo test --locked --workspace
