@@ -8,6 +8,7 @@ keywords = ["http", "client", "capture", "web", "archive"]
 categories = ["web-programming::http-client"]
 edition.workspace = true
 rust-version.workspace = true
+readme = "README.md"
 license.workspace = true
 version.workspace = true
 
