@@ -178,6 +178,45 @@ fn frames_and_stores_a_request_body() {
     assert_eq!(captured.response, response);
 }
 
+/// The body given to a fetch frames the request, so the caller's own framing headers never reach
+/// the origin. Without a body they would declare one that is not sent, and the origin would wait
+/// for it.
+#[test]
+fn replaces_the_framing_headers_of_the_caller() {
+    for (method, body, lengths) in [
+        (Method::GET, None, 0),
+        (Method::POST, Some(b"four".as_slice()), 1),
+    ] {
+        let (port, capture) = serve(b"HTTP/1.1 204 No Content\r\n\r\n");
+        let mut headers = HeaderMap::new();
+        headers.insert("content-length", HeaderValue::from_static("99"));
+        headers.insert("transfer-encoding", HeaderValue::from_static("chunked"));
+
+        let captured = backend()
+            .fetch(Request {
+                method: &method,
+                target: &target(port, "/"),
+                headers: &headers,
+                body,
+            })
+            .expect("a captured exchange");
+
+        assert_eq!(captured.request, capture.join().expect("a served request"));
+        let request = String::from_utf8_lossy(&captured.request).to_ascii_lowercase();
+        assert_eq!(
+            request.matches("content-length:").count(),
+            lengths,
+            "{request}"
+        );
+        assert_eq!(
+            request.matches("content-length: 4\r\n").count(),
+            lengths,
+            "{request}"
+        );
+        assert!(!request.contains("transfer-encoding"), "{request}");
+    }
+}
+
 #[test]
 fn the_length_bound_truncates_the_response() {
     let response: &[u8] =

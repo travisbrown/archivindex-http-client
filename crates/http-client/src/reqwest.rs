@@ -284,8 +284,8 @@ impl Backend for ReqwestBackend {
     /// Perform one HTTP/1.1 exchange and reconstruct its messages.
     ///
     /// Missing `host` and `connection` headers are added, as is the `accept: */*` that `reqwest`
-    /// sends when the caller supplies no `accept`. Framing is normalized: `transfer-encoding` is
-    /// removed, and `content-length` is rewritten to describe a provided body.
+    /// sends when the caller supplies no `accept`. The caller's `transfer-encoding` and
+    /// `content-length` headers are removed, and a provided body is framed with `content-length`.
     ///
     /// The deadline bounds every wait, so it is a wall-clock limit on the exchange.
     ///
@@ -312,9 +312,7 @@ impl Backend for ReqwestBackend {
 /// `reqwest` and `hyper` would otherwise choose the framing fields and append `accept` themselves,
 /// leaving the stored request to guess at them.
 fn request_headers(mut headers: HeaderMap, body: Option<&[u8]>) -> HeaderMap {
-    headers.remove(header::TRANSFER_ENCODING);
     if let Some(body) = body {
-        headers.remove(header::CONTENT_LENGTH);
         headers.append(header::CONTENT_LENGTH, HeaderValue::from(body.len()));
     }
     if !headers.contains_key(header::ACCEPT) {

@@ -140,9 +140,10 @@ impl Recorder {
 impl Backend for Recorder {
     /// Perform one HTTP/1.1 exchange and record its exact bytes.
     ///
-    /// The request is serialized from its parts. Missing `host` and `connection` headers are added,
-    /// and framing is normalized for a provided body. The response is recorded verbatim from its
-    /// final status line through the message boundary.
+    /// The request is serialized from its parts. Missing `host` and `connection` headers are added.
+    /// The caller's `transfer-encoding` and `content-length` headers are removed, and a provided
+    /// body is framed with `content-length`. The response is recorded verbatim from its final
+    /// status line through the message boundary.
     ///
     /// Connection and I/O timeouts are limited by the time remaining before `deadline`. DNS
     /// resolution is not timed, so the deadline is not a strict wall-clock limit.

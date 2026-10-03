@@ -48,8 +48,9 @@ backends may be called from inside a Tokio runtime, because each fetch runs on a
 of its own.
 
 Every backend adds a `host` header when the caller supplies none, and an HTTP/1.1 request without a
-`connection` header gets `connection: close`. A provided body is framed with `content-length`,
-replacing any framing headers the caller supplied.
+`connection` header gets `connection: close`. The body given to a fetch frames its request: every
+backend drops `transfer-encoding` and `content-length` headers that the caller supplies, and frames
+a provided body with `content-length`.
 
 ## Captured exchanges
 
