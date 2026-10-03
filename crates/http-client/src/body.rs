@@ -35,27 +35,21 @@ pub enum Error {
 /// preserved. The stored bytes frame `message`, so the HTTP `Content-Length` is not read. If no
 /// decoding is needed, the returned value borrows from `message`.
 ///
+/// A message stored without a body has an empty entity-body whatever its header section declares,
+/// as the response to a `HEAD` request does.
+///
 /// # Errors
 ///
-/// Returns an error for an unterminated header section, invalid chunk framing after a valid initial
-/// chunk size, or an unsupported transfer-coding. This does not fully validate HTTP headers.
+/// Returns an error for an unterminated header section, invalid or incomplete chunk framing, or an
+/// unsupported transfer-coding. This does not fully validate HTTP headers.
 pub fn entity_body(message: &[u8]) -> Result<Cow<'_, [u8]>, Error> {
     let (body, transfer_encoding) = split_message(message)?;
 
-    if is_chunked(&transfer_encoding)? && opens_chunked(body) {
+    if is_chunked(&transfer_encoding)? && !body.is_empty() {
         Ok(Cow::Owned(dechunk(body)?))
     } else {
         Ok(Cow::Borrowed(body))
     }
-}
-
-/// Whether a body opens with a chunk size line.
-///
-/// Clients that decode transfer-coding commonly store the decoded body while keeping the
-/// `Transfer-Encoding` field it arrived with, so a body declared chunked that does not begin as one
-/// is the entity-body as stored.
-fn opens_chunked(body: &[u8]) -> bool {
-    next_line(body, 0).is_some_and(|line| chunk_size(&body[..line.end]).is_ok())
 }
 
 /// Split an HTTP message into its body and combined `Transfer-Encoding` value.
@@ -291,11 +285,19 @@ mod tests {
         let prefix = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n";
 
         for (body, expected) in [
-            // A chunk after the first declares a size that is not one.
+            // The body does not open with a chunk size.
+            (
+                "<!doctype html>\r\n<title>a</title>",
+                Error::MalformedChunkSize("<!doctype html>".to_owned()),
+            ),
+            // A later chunk declares a size that is not one.
             (
                 "3\r\nabc\r\nzz\r\ndef\r\n0\r\n\r\n",
                 Error::MalformedChunkSize("zz".to_owned()),
             ),
+            // The body ends inside its first chunk-size line. Its one byte is framing, so
+            // returning it as the entity-body would report a body byte that never arrived.
+            ("a", Error::IncompleteChunkedBody),
             // The body ends inside the data of a chunk.
             ("5\r\nabc", Error::IncompleteChunkedBody),
             // The data of a chunk is not closed by a line ending.
@@ -309,24 +311,12 @@ mod tests {
         }
     }
 
-    /// Clients that decode transfer-coding store dechunked bodies under the `Transfer-Encoding` the
-    /// response carried.
+    /// The response to a `HEAD` request keeps the framing fields of the response to a `GET`, and
+    /// is stored without the body they describe.
     #[test]
-    fn body_declared_chunked_that_does_not_open_as_one_is_read_as_stored() {
-        let prefix = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Length: -1\r\n\r\n";
+    fn chunked_message_stored_without_a_body() {
+        let message = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n";
 
-        for body in [
-            "<!doctype html>\r\n<title>a</title>",
-            "zz\r\nabc\r\n0\r\n\r\n",
-            "",
-        ] {
-            let message = [prefix.as_bytes(), body.as_bytes()].concat();
-
-            assert_eq!(
-                entity_body(&message).unwrap().as_ref(),
-                body.as_bytes(),
-                "{body:?}"
-            );
-        }
+        assert_eq!(entity_body(message).unwrap().as_ref(), b"");
     }
 }

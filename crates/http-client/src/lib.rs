@@ -152,6 +152,9 @@ pub struct CapturedExchange {
 
 impl CapturedExchange {
     /// Return the response entity-body with transfer coding removed and content coding preserved.
+    ///
+    /// This fails for a chunked response that was truncated, because its chunked body is
+    /// incomplete. [`stored_body`](Self::stored_body) returns what arrived.
     pub fn entity_body(&self) -> Result<Cow<'_, [u8]>, body::Error> {
         body::entity_body(&self.response)
     }
