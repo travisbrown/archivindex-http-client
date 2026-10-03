@@ -5,7 +5,11 @@
 //! the [`Recorder`](crate::recorder::Recorder) when the stored bytes must be the ones that crossed
 //! the connection.
 //!
-//! The stored request has the request line, the fields, and the field order that `reqwest` sends.
+//! The stored request is built from the parts given to `reqwest`, which the backend completes first
+//! so that `reqwest` has nothing to add. The tests compare it with the bytes an origin receives, but
+//! the backend does not observe the connection, so the stored request is what `reqwest` is expected
+//! to send and not a record of what it sent.
+//!
 //! The stored response differs from the origin's bytes in these ways:
 //!
 //! - Field names are lowercased, and the whitespace around field values is normalized.
@@ -307,7 +311,7 @@ impl Backend for ReqwestBackend {
     }
 }
 
-/// Complete `headers` so that they are exactly the fields `reqwest` sends.
+/// Complete `headers` so that `reqwest` has nothing to add to them.
 ///
 /// `reqwest` and `hyper` would otherwise choose the framing fields and append `accept` themselves,
 /// leaving the stored request to guess at them.

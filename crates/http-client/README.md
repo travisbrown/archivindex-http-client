@@ -120,10 +120,14 @@ origin address.
 
 ## The reqwest backend
 
-`ReqwestBackend` stores the request line, the fields, and the field order that `reqwest` sends,
-including the `accept: */*` it adds when the caller supplies no `accept` header. The request target
-is the one `reqwest` sends after normalizing the URI (for example, `/a/../b` becomes `/b`), while
-`CapturedExchange::target_uri` remains the URI the caller asked for.
+`ReqwestBackend` builds the stored request from the parts it gives to `reqwest`, which it completes
+first so that `reqwest` has nothing to add. For example, it supplies the `accept: */*` that
+`reqwest` adds when the caller supplies no `accept` header. The tests compare the stored request
+with the bytes an origin receives, but the backend does not observe the connection, so the stored
+request is what `reqwest` is expected to send and not a record of what it sent.
+
+The request target is the one `reqwest` sends after normalizing the URI (for example, `/a/../b`
+becomes `/b`), while `CapturedExchange::target_uri` remains the URI the caller asked for.
 
 The stored response differs from the origin's bytes in these ways:
 
