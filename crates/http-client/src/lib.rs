@@ -1,15 +1,19 @@
+#![cfg_attr(docsrs, feature(doc_cfg))]
 //! HTTP clients that capture the request and response messages of each exchange.
 //!
 //! A [`Backend`] performs one HTTP exchange and returns its stored HTTP/1 representation in a
 //! [`CapturedExchange`]. No backend follows redirects, decodes content, keeps cookies, retries, or
 //! reuses a connection, so one fetch is exactly one request and one response.
 //!
-//! Two backends are provided:
+//! Three backends are provided:
 //!
 //! - [`Recorder`](recorder::Recorder) performs HTTP/1.1 over its own connection and stores the
 //!   exact bytes sent and received.
 //! - [`ReqwestBackend`](reqwest::ReqwestBackend) performs HTTP/1.1 with `reqwest` and reconstructs
 //!   both messages from the parts `reqwest` exposes.
+//! - `WreqBackend` (in the `wreq` module, behind the `wreq` feature) uses `BoringSSL` with browser
+//!   emulation. It stores HTTP/1 bytes exactly and reconstructs HTTP/2 exchanges, which it
+//!   negotiates only when asked to.
 //!
 //! [`CapturedExchange::fidelity`] says which of these a stored exchange is. Every backend frames
 //! and truncates responses with [`ResponseCapture`](framing::ResponseCapture), so a size limit, a
@@ -32,6 +36,9 @@ pub mod reqwest;
 mod runtime;
 mod socks;
 mod tls;
+#[cfg(feature = "wreq")]
+#[cfg_attr(docsrs, doc(cfg(feature = "wreq")))]
+pub mod wreq;
 
 use std::borrow::Cow;
 use std::fmt::Debug;
@@ -100,6 +107,8 @@ pub enum Fidelity {
     /// Header names are lowercased, the reason phrase is the canonical one, and chunk boundaries
     /// are those the client delivered rather than those the origin sent.
     ReconstructedHttp1,
+    /// The exchange used HTTP/2, and both messages were rebuilt as HTTP/1.1 messages.
+    ReconstructedHttp2,
 }
 
 /// A negotiated TLS protocol version.
