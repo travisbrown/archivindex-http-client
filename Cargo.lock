@@ -2345,7 +2345,7 @@ checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
 [[package]]
 name = "wreq"
 version = "0.16.1"
-source = "git+https://github.com/travisbrown/wreq?branch=topic%2Farchivindex-observer#108701e00f33b40132e78d28abce8b4f6e3a6b19"
+source = "git+https://github.com/travisbrown/wreq?rev=108701e00f33b40132e78d28abce8b4f6e3a6b19#108701e00f33b40132e78d28abce8b4f6e3a6b19"
 dependencies = [
  "btls",
  "btls-sys",

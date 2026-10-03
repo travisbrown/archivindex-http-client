@@ -155,7 +155,7 @@ these entries from this repository's [workspace manifest](../../Cargo.toml) into
 
 ```toml
 [patch.crates-io]
-wreq = { git = "https://github.com/travisbrown/wreq", branch = "topic/archivindex-observer" }
+wreq = { git = "https://github.com/travisbrown/wreq", rev = "108701e00f33b40132e78d28abce8b4f6e3a6b19" }
 btls = { git = "https://github.com/0x676e67/btls", rev = "9d859deefab0183e2fccf91204c818c8d1805b27" }
 btls-sys = { git = "https://github.com/0x676e67/btls", rev = "9d859deefab0183e2fccf91204c818c8d1805b27" }
 tokio-btls = { git = "https://github.com/0x676e67/btls", rev = "9d859deefab0183e2fccf91204c818c8d1805b27" }
