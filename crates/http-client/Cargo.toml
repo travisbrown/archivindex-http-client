@@ -1,0 +1,36 @@
+[package]
+name = "archivindex-http-client"
+description = "HTTP clients that capture the request and response messages of each exchange"
+authors.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/crate/archivindex-http-client/"
+keywords = ["http", "client", "capture", "web", "archive"]
+categories = ["web-programming::http-client"]
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+chrono.workspace = true
+fluent-uri.workspace = true
+http.workspace = true
+http-body-util.workspace = true
+reqwest.workspace = true
+rustls.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt", "time"] }
+url.workspace = true
+webpki-roots.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+# The TLS tests serve self-signed certificates.
+rcgen.workspace = true
+
+[[bench]]
+name = "response_capture"
+harness = false
