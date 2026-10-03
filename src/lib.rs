@@ -15,8 +15,9 @@
 //!   emulation. It stores HTTP/1 bytes exactly and reconstructs HTTP/2 exchanges, which it
 //!   negotiates only when asked to.
 //!
-//! [`CapturedExchange::fidelity`] says which of these a stored exchange is. Every client frames
-//! and truncates responses with [`ResponseCapture`](framing::ResponseCapture), so a size limit, a
+//! [`CapturedExchange::fidelity`] says whether a stored exchange is exact or reconstructed, and
+//! [`CapturedExchange::http_protocol`] says which HTTP version it used. Every client frames and
+//! truncates responses with [`ResponseCapture`](framing::ResponseCapture), so a size limit, a
 //! disconnect, or a timeout after the header section returns a truncated response with the same
 //! bytes whichever client performed the exchange.
 //!
@@ -98,18 +99,25 @@ pub enum Error {
 #[error("invalid proxy: {0}")]
 pub struct InvalidProxy(pub &'static str);
 
-/// How the stored messages of an exchange relate to the bytes that crossed the connection.
+/// Whether the stored messages of an exchange are the bytes that crossed the connection.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum Fidelity {
     /// The stored messages are the exact HTTP/1 bytes sent and received.
     Exact,
-    /// The exchange used HTTP/1, and both messages were rebuilt from parsed parts.
+    /// Both messages were rebuilt from parsed parts.
     ///
     /// Header names are lowercased, the reason phrase is the canonical one, and chunk boundaries
     /// are those the HTTP library delivered rather than those the origin sent.
-    ReconstructedHttp1,
-    /// The exchange used HTTP/2, and both messages were rebuilt as HTTP/1.1 messages.
-    ReconstructedHttp2,
+    Reconstructed,
+}
+
+/// The HTTP version an exchange used on its connection, whatever form its messages are stored in.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum HttpProtocol {
+    /// HTTP/1.0 or HTTP/1.1.
+    Http1,
+    /// HTTP/2.
+    Http2,
 }
 
 /// A negotiated TLS protocol version.
@@ -132,8 +140,10 @@ pub struct CapturedExchange {
     pub request: Vec<u8>,
     /// Stored response message, from the final status line through the recorded end.
     pub response: Vec<u8>,
-    /// How the stored messages relate to the bytes that crossed the connection.
+    /// Whether the stored messages are the bytes that crossed the connection.
     pub fidelity: Fidelity,
+    /// The HTTP version the exchange used. The stored messages are HTTP/1 messages either way.
+    pub http_protocol: HttpProtocol,
     /// The negotiated TLS version, when the exchange used TLS and the client can observe it.
     pub tls_version: Option<TlsVersion>,
     /// Parsed fields and boundaries of the stored response.

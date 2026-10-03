@@ -71,9 +71,10 @@ given.
 A `CapturedExchange` holds the stored request and response messages, both in HTTP/1 form, and these
 facts about the exchange:
 
-- `fidelity` says whether the stored messages are the exact bytes of an HTTP/1 exchange
-  (`Exact`), or were rebuilt from parsed parts of an HTTP/1 exchange (`ReconstructedHttp1`) or an
-  HTTP/2 exchange (`ReconstructedHttp2`).
+- `fidelity` says whether the stored messages are the exact bytes that crossed the connection
+  (`Exact`) or were rebuilt from parsed parts (`Reconstructed`).
+- `http_protocol` is the HTTP version the exchange used on its connection (`Http1` or `Http2`),
+  whatever form its messages are stored in.
 - `tls_version` is the negotiated TLS version. It is absent for a plaintext exchange, and when the
   client cannot observe it. No client guesses a version.
 - `ip_address` is the origin address. It is absent for a proxied exchange.
@@ -221,8 +222,9 @@ origin selects it, falling back to HTTP/1.1 otherwise. Without it, the client of
 `http/1.1`. A browser profile normally offers `h2` too, so the `ClientHello` of a client without
 HTTP/2 differs from the emulated browser's in its ALPN extension.
 
-An HTTP/2 exchange is stored as HTTP/1.1 messages, with `Fidelity::ReconstructedHttp2`. The stored
-messages are a reconstruction, not a transcript of binary HTTP/2 frames:
+An HTTP/2 exchange is stored as HTTP/1.1 messages, with `Fidelity::Reconstructed` and
+`HttpProtocol::Http2`. The stored messages are a reconstruction, not a transcript of binary HTTP/2
+frames:
 
 - Pseudo-headers become the request method, target, and `host` header, or the response status.
   Reason phrases and the header order of the response are produced by the reconstruction.

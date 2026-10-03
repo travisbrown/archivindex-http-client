@@ -1,7 +1,7 @@
 //! A capture client built on `reqwest`.
 //!
 //! [`ReqwestClient`] performs an HTTP/1.1 exchange with `reqwest` and stores both messages rebuilt
-//! from the parts `reqwest` exposes, so its exchanges have [`Fidelity::ReconstructedHttp1`]. Use
+//! from the parts `reqwest` exposes, so its exchanges have [`Fidelity::Reconstructed`]. Use
 //! the [`Recorder`](crate::recorder::Recorder) when the stored bytes must be the ones that crossed
 //! the connection.
 //!
@@ -39,7 +39,8 @@ use crate::message::ResponseMetadata;
 use crate::reconstruct::{reconstruct_request, reconstruct_response};
 use crate::{
     CapturedExchange, Client, DEFAULT_MAX_RESPONSE_LENGTH, DEFAULT_TIMEOUT, Error, Fidelity,
-    InvalidProxy, Request, TlsVersion, chunked, failure, request, runtime, socks, tls,
+    HttpProtocol, InvalidProxy, Request, TlsVersion, chunked, failure, request, runtime, socks,
+    tls,
 };
 
 /// Performs HTTP/1.1 exchanges with `reqwest` and reconstructs their messages.
@@ -262,7 +263,8 @@ impl ReqwestClient {
         Ok(CapturedExchange {
             request: stored_request,
             response,
-            fidelity: Fidelity::ReconstructedHttp1,
+            fidelity: Fidelity::Reconstructed,
+            http_protocol: HttpProtocol::Http1,
             tls_version,
             response_metadata,
             target_uri,

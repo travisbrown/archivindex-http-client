@@ -11,7 +11,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use archivindex_http_client::framing::Truncation;
-use archivindex_http_client::{Client as _, Error, Request, TlsVersion};
+use archivindex_http_client::{Client as _, Error, HttpProtocol, Request, TlsVersion};
 use http::{HeaderMap, HeaderValue, Method, Uri};
 
 use crate::certificate::self_signed;
@@ -57,6 +57,7 @@ fn stores_the_request_the_origin_received_and_the_response_it_sent() {
     assert_eq!(captured.stored_body(), b"hello");
     assert_eq!(captured.ip_address.unwrap().to_string(), "127.0.0.1");
     assert_eq!(captured.target_uri.as_str(), target.to_string());
+    assert_eq!(captured.http_protocol, HttpProtocol::Http1);
     assert_eq!(captured.tls_version, None);
     assert_eq!(captured.truncated, None);
 }

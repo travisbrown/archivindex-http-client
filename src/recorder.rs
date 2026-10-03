@@ -34,7 +34,7 @@ use crate::read::read_response;
 use crate::reconstruct::reconstruct_request;
 use crate::{
     CapturedExchange, Client, DEFAULT_MAX_RESPONSE_LENGTH, DEFAULT_TIMEOUT, Error, Fidelity,
-    InvalidProxy, Request, TlsVersion, request, socks, tls,
+    HttpProtocol, InvalidProxy, Request, TlsVersion, request, socks, tls,
 };
 
 /// An HTTP/1.1 client that records the exact bytes of one exchange per fetch.
@@ -248,6 +248,7 @@ impl Client for Recorder {
             request,
             response,
             fidelity: Fidelity::Exact,
+            http_protocol: HttpProtocol::Http1,
             tls_version: transport.tls_version(),
             response_metadata,
             target_uri,

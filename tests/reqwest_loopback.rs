@@ -48,7 +48,7 @@ fn the_response_head_is_reconstructed() {
         captured.response,
         b"HTTP/1.1 200 OK\r\ncontent-length: 5\r\nx-mixed-case: Kept\r\n\r\nhello"
     );
-    assert_eq!(captured.fidelity, Fidelity::ReconstructedHttp1);
+    assert_eq!(captured.fidelity, Fidelity::Reconstructed);
     assert_eq!(captured.truncated, None);
 }
 

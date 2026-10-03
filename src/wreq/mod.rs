@@ -7,9 +7,10 @@
 //! HTTP/1 messages are captured exactly, with [`Fidelity::Exact`](crate::Fidelity::Exact). HTTP/2
 //! is used only by a client that enables it with [`WreqClient::http2`]. An HTTP/2 exchange is
 //! reconstructed as HTTP/1.1 messages, with
-//! [`Fidelity::ReconstructedHttp2`](crate::Fidelity::ReconstructedHttp2) identifying its original
-//! protocol. Content coding is preserved and chunked framing retains response trailers. Both HTTP
-//! versions also record the negotiated TLS version when available.
+//! [`Fidelity::Reconstructed`](crate::Fidelity::Reconstructed), and
+//! [`HttpProtocol::Http2`](crate::HttpProtocol::Http2) identifies its original protocol. Content
+//! coding is preserved and chunked framing retains response trailers. Both HTTP versions also
+//! record the negotiated TLS version when available.
 //!
 //! Calls are synchronous and can run inside an existing Tokio runtime. See the crate README for
 //! capture limits, reconstruction, and timeout semantics.

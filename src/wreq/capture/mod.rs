@@ -19,7 +19,9 @@ use super::{WreqClient, transport_error};
 use crate::framing::{ResponseCapture, ResponseError, Truncation};
 use crate::message::ResponseMetadata;
 use crate::reconstruct::reconstruct_request;
-use crate::{CapturedExchange, Error, Fidelity, Request, TlsVersion, failure, request};
+use crate::{
+    CapturedExchange, Error, Fidelity, HttpProtocol, Request, TlsVersion, failure, request,
+};
 
 impl WreqClient {
     /// Build the isolated `wreq` client with the selected transport settings and capture observer.
@@ -123,10 +125,10 @@ impl WreqClient {
             return Err(error);
         }
         let request = state.recorded_request(method, &sent_target, body)?;
-        let fidelity = if state.http2 {
-            Fidelity::ReconstructedHttp2
+        let (fidelity, http_protocol) = if state.http2 {
+            (Fidelity::Reconstructed, HttpProtocol::Http2)
         } else {
-            Fidelity::Exact
+            (Fidelity::Exact, HttpProtocol::Http1)
         };
         let tls_version = state.tls_version();
         let (response, truncated) = state.response.into_parts();
@@ -136,6 +138,7 @@ impl WreqClient {
             request,
             response,
             fidelity,
+            http_protocol,
             tls_version,
             response_metadata,
             target_uri,

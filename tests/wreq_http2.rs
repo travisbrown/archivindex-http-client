@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use archivindex_http_client::framing::Truncation;
 use archivindex_http_client::wreq::WreqClient;
-use archivindex_http_client::{Client as _, Fidelity, Request, TlsVersion};
+use archivindex_http_client::{Client as _, Fidelity, HttpProtocol, Request, TlsVersion};
 use http::{HeaderMap, Method, Response, StatusCode, Uri, Version};
 use tokio_rustls::TlsAcceptor;
 use wreq_util::Profile;
@@ -216,7 +216,8 @@ fn captures_negotiated_http2_with_finalized_request_headers_and_trailers() {
     let received = server.join().unwrap();
 
     assert_eq!(received.body, b"request body");
-    assert_eq!(captured.fidelity, Fidelity::ReconstructedHttp2);
+    assert_eq!(captured.fidelity, Fidelity::Reconstructed);
+    assert_eq!(captured.http_protocol, HttpProtocol::Http2);
     assert_eq!(captured.tls_version, Some(TlsVersion::V1_3));
     assert_eq!(captured.truncated, None);
     assert_eq!(captured.entity_body().unwrap().as_ref(), b"hello");
@@ -250,7 +251,8 @@ fn reports_the_tls_version_of_an_http2_connection() {
         let captured = client.fetch(request::get(&target)).unwrap();
         server.join().unwrap();
 
-        assert_eq!(captured.fidelity, Fidelity::ReconstructedHttp2);
+        assert_eq!(captured.fidelity, Fidelity::Reconstructed);
+        assert_eq!(captured.http_protocol, HttpProtocol::Http2);
         assert_eq!(captured.tls_version, Some(expected));
     }
 }
