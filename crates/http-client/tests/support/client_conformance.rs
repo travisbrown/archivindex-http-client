@@ -100,6 +100,68 @@ fn stores_a_chunked_response_with_its_framing() {
     assert_eq!(captured.truncated, None);
 }
 
+/// A chunked response that ends before the empty line of its trailer section has no entity-body,
+/// even when every chunk arrived. The clients that decode the body themselves never deliver its
+/// last chunk in that case, so accepting it would give a different answer for each client.
+#[test]
+fn a_truncated_chunked_response_has_no_entity_body() {
+    for response in [
+        b"HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n".as_slice(),
+        b"HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n3\r\nabc\r\n",
+        b"HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n3\r\nabc\r\n0\r\n",
+    ] {
+        let (port, capture) = serve(response);
+
+        let captured = fetch(&client(), port, "/cut");
+        capture.join().expect("a served request");
+
+        assert_eq!(captured.truncated, Some(Truncation::Disconnect));
+        assert_eq!(
+            captured.entity_body(),
+            Err(archivindex_http_client::body::Error::IncompleteChunkedBody),
+            "{:?}",
+            String::from_utf8_lossy(response)
+        );
+    }
+}
+
+/// The response to a `HEAD` request, and a `204` or `304` response, has no body. Its entity-body
+/// is empty even when its header section declares the chunked framing that another response to
+/// the same request would have.
+#[test]
+fn a_response_without_a_body_has_an_empty_entity_body() {
+    let cases: [(Method, &[u8]); 3] = [
+        (
+            Method::HEAD,
+            b"HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n",
+        ),
+        (
+            Method::GET,
+            b"HTTP/1.1 204 No Content\r\ntransfer-encoding: chunked\r\n\r\n",
+        ),
+        (
+            Method::GET,
+            b"HTTP/1.1 304 Not Modified\r\ntransfer-encoding: chunked\r\n\r\n",
+        ),
+    ];
+
+    for (method, response) in cases {
+        let (port, capture) = serve(response);
+
+        let captured = client()
+            .fetch(Request {
+                method: &method,
+                ..get(&target(port, "/"))
+            })
+            .expect("a captured exchange");
+        capture.join().expect("a served request");
+
+        assert_eq!(captured.response, response);
+        assert_eq!(captured.truncated, None);
+        assert_eq!(captured.entity_body().unwrap().as_ref(), b"");
+    }
+}
+
 #[test]
 fn stores_a_close_delimited_response_to_the_close() {
     let response: &[u8] = b"HTTP/1.1 200 OK\r\nx-no-framing: declared\r\n\r\nthe close ends this";

@@ -35,8 +35,10 @@ pub enum Error {
 /// preserved. The stored bytes frame `message`, so the HTTP `Content-Length` is not read. If no
 /// decoding is needed, the returned value borrows from `message`.
 ///
-/// A message stored without a body has an empty entity-body whatever its header section declares,
-/// as the response to a `HEAD` request does.
+/// A body declared chunked must be complete, through the empty line that ends its trailer section.
+/// The message alone does not say whether it has a body at all, which depends on the request method
+/// and the status, so use [`CapturedExchange::entity_body`](crate::CapturedExchange::entity_body)
+/// for a captured response.
 ///
 /// # Errors
 ///
@@ -45,7 +47,7 @@ pub enum Error {
 pub fn entity_body(message: &[u8]) -> Result<Cow<'_, [u8]>, Error> {
     let (body, transfer_encoding) = split_message(message)?;
 
-    if is_chunked(&transfer_encoding)? && !body.is_empty() {
+    if is_chunked(&transfer_encoding)? {
         Ok(Cow::Owned(dechunk(body)?))
     } else {
         Ok(Cow::Borrowed(body))
@@ -129,7 +131,14 @@ fn dechunk(body: &[u8]) -> Result<Vec<u8>, Error> {
         offset = line.next;
 
         if size == 0 {
-            return Ok(decoded);
+            // The trailer section ends at an empty line, which a complete body includes.
+            loop {
+                let line = next_line(body, offset).ok_or(Error::IncompleteChunkedBody)?;
+                if line.end == offset {
+                    return Ok(decoded);
+                }
+                offset = line.next;
+            }
         }
 
         let end = offset
@@ -230,14 +239,6 @@ mod tests {
         );
     }
 
-    /// A chunked body may end immediately after its zero-length chunk.
-    #[test]
-    fn chunked_body_ending_at_its_last_chunk() {
-        let message = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n3\r\nabc\r\n0\r\n";
-
-        assert_eq!(entity_body(message).unwrap().as_ref(), b"abc");
-    }
-
     /// The `identity` coding leaves the body unchanged.
     #[test]
     fn identity_coding_is_dropped() {
@@ -304,19 +305,22 @@ mod tests {
             ("3\r\nabcdef\r\n0\r\n\r\n", Error::IncompleteChunkedBody),
             // No chunk closes the body.
             ("3\r\nabc\r\n", Error::IncompleteChunkedBody),
+            // The body ends at its last chunk, before the empty line that ends the trailer
+            // section. Every body byte has arrived, but a client that decodes the body itself
+            // reports this as a failure, so accepting it would depend on the client.
+            ("3\r\nabc\r\n0\r\n", Error::IncompleteChunkedBody),
+            // The trailer section is not closed.
+            (
+                "3\r\nabc\r\n0\r\nExpires: never\r\n",
+                Error::IncompleteChunkedBody,
+            ),
+            // There is no body at all. Only the request method or the status can make that a
+            // complete response, and neither is part of the message.
+            ("", Error::IncompleteChunkedBody),
         ] {
             let message = [prefix.as_bytes(), body.as_bytes()].concat();
 
             assert_eq!(entity_body(&message).unwrap_err(), expected, "{body:?}");
         }
-    }
-
-    /// The response to a `HEAD` request keeps the framing fields of the response to a `GET`, and
-    /// is stored without the body they describe.
-    #[test]
-    fn chunked_message_stored_without_a_body() {
-        let message = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n";
-
-        assert_eq!(entity_body(message).unwrap().as_ref(), b"");
     }
 }

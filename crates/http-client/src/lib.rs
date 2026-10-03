@@ -154,10 +154,17 @@ pub struct CapturedExchange {
 impl CapturedExchange {
     /// Return the response entity-body with transfer coding removed and content coding preserved.
     ///
-    /// This fails for a chunked response that was truncated, because its chunked body is
-    /// incomplete. [`stored_body`](Self::stored_body) returns what arrived.
+    /// The response to a `HEAD` request, and a `204` or `304` response, has no body, so its
+    /// entity-body is empty whatever its header section declares. A chunked response that was
+    /// truncated has an incomplete chunked body, for which this fails;
+    /// [`stored_body`](Self::stored_body) returns what arrived.
     pub fn entity_body(&self) -> Result<Cow<'_, [u8]>, body::Error> {
-        body::entity_body(&self.response)
+        if self.request.starts_with(b"HEAD ") || matches!(self.response_metadata.status, 204 | 304)
+        {
+            Ok(Cow::Borrowed(&[]))
+        } else {
+            body::entity_body(&self.response)
+        }
     }
 
     /// Return the stored bytes after the response header section without transfer decoding.

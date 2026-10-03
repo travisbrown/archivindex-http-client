@@ -78,8 +78,10 @@ facts about the exchange:
 
 The stored response starts at the final status line, since interim `1xx` responses are discarded.
 `stored_body` returns the bytes after its header section as they were stored, and `entity_body`
-returns them with transfer coding removed. Content coding is never removed. `entity_body` fails for
-a chunked response that was truncated, because its chunked body is incomplete.
+returns them with transfer coding removed. Content coding is never removed. The response to a `HEAD`
+request, and a `204` or `304` response, has an empty entity-body. `entity_body` fails for a chunked
+response that was truncated, because its chunked body is incomplete, and it gives the same result
+whichever client stored the response.
 
 The `message` module parses stored messages, the `body` module removes transfer coding from them,
 the `framing` module finds the end of a response as its bytes arrive, and the `reconstruct` module
