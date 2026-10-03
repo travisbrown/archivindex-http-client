@@ -451,6 +451,40 @@ fn stores_the_messages_inside_tls_and_reports_its_version() {
     }
 }
 
+/// A private root is trusted only when the caller configures it, so a certificate that no trusted
+/// root signed fails the fetch. This guards against a client that would skip verification.
+#[test]
+fn an_untrusted_certificate_fails() {
+    let (_, config) = self_signed("localhost", &[&rustls::version::TLS13]);
+    let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback listener");
+    let port = listener.local_addr().expect("a bound address").port();
+    let server = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("one connection");
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .expect("a read timeout");
+        let mut connection =
+            rustls::ServerConnection::new(Arc::new(config)).expect("a TLS session");
+
+        // The handshake ends with the alert or the close that the client answers with.
+        while connection.is_handshaking() {
+            if connection.complete_io(&mut stream).is_err() {
+                return false;
+            }
+        }
+
+        true
+    });
+
+    let target: Uri = format!("https://localhost:{port}/untrusted")
+        .parse()
+        .expect("a target");
+    let result = client().fetch(get(&target));
+
+    assert!(result.is_err(), "{result:?}");
+    assert!(!server.join().expect("a served connection"));
+}
+
 #[test]
 fn keeps_what_arrived_before_a_disconnect_after_the_head() {
     let response = b"HTTP/1.1 200 OK\r\ncontent-length: 100\r\n\r\nshort";
@@ -501,6 +535,9 @@ fn a_limit_equal_to_the_response_length_does_not_truncate() {
     for response in [
         b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nok".as_slice(),
         b"HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n2\r\nok\r\n0\r\n\r\n".as_slice(),
+        // The trailer section is part of the stored message, so it counts towards the limit.
+        b"HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n2\r\nok\r\n0\r\nx-sum: 2\r\n\r\n"
+            .as_slice(),
         b"HTTP/1.1 200 OK\r\n\r\nok".as_slice(),
     ] {
         let (port, server) = serve(response);

@@ -20,6 +20,11 @@ reason phrases, chunk extensions, and trailers are the origin's. `ReqwestClient`
 messages from the parts `reqwest` exposes. `WreqClient` adds browser emulation, and HTTP/2 when
 asked for it; see [the `wreq` feature](#the-wreq-feature).
 
+`Recorder` and `ReqwestClient` trust the Mozilla roots of `webpki-roots` and use `aws-lc-rs`,
+whatever crypto provider the process has installed. Their `tls_config` setters replace that
+configuration, for example to trust a private certificate authority. Both offer only `http/1.1` in
+ALPN, whatever the configuration offers, because neither speaks HTTP/2.
+
 ## Usage
 
 ```rust,no_run
@@ -251,8 +256,8 @@ All three clients run one [conformance suite](tests/support/client_conformance.r
 scripted loopback servers. It covers framing, truncation, timeouts, TLS, and concurrency, and a
 [second suite](tests/support/proxy_conformance.rs) covers proxies. `Recorder` and `WreqClient`
 also run an [exact capture suite](tests/support/exact_conformance.rs). Further tests cover the
-reconstruction that `ReqwestClient` performs, profile selection, and HTTP/2. No test makes a
-request outside the loopback interface.
+reconstruction that `ReqwestClient` performs, the TLS configuration of the `rustls` clients,
+profile selection, and HTTP/2. No test makes a request outside the loopback interface.
 
 Run the tests from the workspace root, without and with the `wreq` feature:
 

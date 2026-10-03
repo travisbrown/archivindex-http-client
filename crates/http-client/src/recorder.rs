@@ -71,10 +71,12 @@ impl Recorder {
         Ok(self)
     }
 
-    /// Replace the TLS client configuration.
+    /// Replace the TLS client configuration, for example to trust a private certificate authority.
+    ///
+    /// The recorder offers only `http/1.1` in ALPN, whatever `config` offers.
     #[must_use]
     pub fn tls_config(mut self, config: Arc<rustls::ClientConfig>) -> Self {
-        self.tls = config;
+        self.tls = tls::http1(config);
 
         self
     }
