@@ -163,6 +163,19 @@ impl CapturedExchange {
     }
 }
 
+/// The request of one exchange.
+#[derive(Clone, Copy, Debug)]
+pub struct Request<'a> {
+    /// The request method.
+    pub method: &'a Method,
+    /// The absolute `http` or `https` URI to request.
+    pub target: &'a HttpUri,
+    /// The request headers.
+    pub headers: &'a HeaderMap,
+    /// The request body, if there is one.
+    pub body: Option<&'a [u8]>,
+}
+
 /// Performs and captures one HTTP exchange.
 ///
 /// Implementations are shared across threads, so they must be `Send`, `Sync`, and cheap to clone
@@ -180,10 +193,7 @@ pub trait Backend: Debug + Send + Sync + 'static {
     /// section, or the response cannot be framed.
     fn fetch_within(
         &self,
-        method: &Method,
-        target: &HttpUri,
-        headers: &HeaderMap,
-        body: Option<&[u8]>,
+        request: Request<'_>,
         deadline: Option<Instant>,
     ) -> Result<CapturedExchange, Error>;
 
@@ -192,14 +202,8 @@ pub trait Backend: Debug + Send + Sync + 'static {
     /// # Errors
     ///
     /// As for [`fetch_within`](Self::fetch_within).
-    fn fetch(
-        &self,
-        method: &Method,
-        target: &HttpUri,
-        headers: &HeaderMap,
-        body: Option<&[u8]>,
-    ) -> Result<CapturedExchange, Error> {
-        self.fetch_within(method, target, headers, body, None)
+    fn fetch(&self, request: Request<'_>) -> Result<CapturedExchange, Error> {
+        self.fetch_within(request, None)
     }
 
     /// Perform one exchange, finishing before `deadline`.
@@ -207,14 +211,7 @@ pub trait Backend: Debug + Send + Sync + 'static {
     /// # Errors
     ///
     /// As for [`fetch_within`](Self::fetch_within), including when `deadline` has already passed.
-    fn fetch_by(
-        &self,
-        method: &Method,
-        target: &HttpUri,
-        headers: &HeaderMap,
-        body: Option<&[u8]>,
-        deadline: Instant,
-    ) -> Result<CapturedExchange, Error> {
-        self.fetch_within(method, target, headers, body, Some(deadline))
+    fn fetch_by(&self, request: Request<'_>, deadline: Instant) -> Result<CapturedExchange, Error> {
+        self.fetch_within(request, Some(deadline))
     }
 }

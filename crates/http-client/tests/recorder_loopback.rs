@@ -11,6 +11,8 @@ mod certificate;
 mod exact_conformance;
 #[path = "support/proxy_conformance.rs"]
 mod proxy_conformance;
+#[path = "support/request.rs"]
+mod request;
 #[path = "support/server.rs"]
 mod server;
 #[path = "support/trust.rs"]

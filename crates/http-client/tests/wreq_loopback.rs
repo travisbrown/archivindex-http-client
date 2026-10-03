@@ -12,6 +12,8 @@ mod certificate;
 mod exact_conformance;
 #[path = "support/proxy_conformance.rs"]
 mod proxy_conformance;
+#[path = "support/request.rs"]
+mod request;
 #[path = "support/server.rs"]
 mod server;
 
@@ -86,12 +88,9 @@ fn http2_is_not_negotiated_unless_enabled() {
     });
 
     let captured = trusted_backend(&certificate)
-        .fetch(
-            &http::Method::GET,
+        .fetch(request::get(
             &format!("https://localhost:{port}/").parse().unwrap(),
-            &http::HeaderMap::new(),
-            None,
-        )
+        ))
         .unwrap();
 
     assert_eq!(captured.request, server.join().unwrap());

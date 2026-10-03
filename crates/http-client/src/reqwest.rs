@@ -35,7 +35,7 @@ use crate::message::ResponseMetadata;
 use crate::reconstruct::{reconstruct_request, reconstruct_response};
 use crate::{
     Backend, CapturedExchange, DEFAULT_MAX_RESPONSE_LENGTH, DEFAULT_TIMEOUT, Error, Fidelity,
-    InvalidProxy, TlsVersion, chunked, request, runtime, socks, tls,
+    InvalidProxy, Request, TlsVersion, chunked, request, runtime, socks, tls,
 };
 
 /// Performs HTTP/1.1 exchanges with `reqwest` and reconstructs their messages.
@@ -168,12 +168,15 @@ impl ReqwestBackend {
 
     async fn capture(
         &self,
-        method: &Method,
-        target: &http::Uri,
-        headers: &HeaderMap,
-        body: Option<&[u8]>,
+        request: Request<'_>,
         deadline: Option<Instant>,
     ) -> Result<CapturedExchange, Error> {
+        let Request {
+            method,
+            target,
+            headers,
+            body,
+        } = request;
         let target_string = target.to_string();
         let target_uri = Uri::parse(target_string.as_str())?.to_owned();
         let url = reqwest::Url::parse(&target_string).map_err(other)?;
@@ -289,15 +292,10 @@ impl Backend for ReqwestBackend {
     /// [`CapturedExchange::truncated`] set.
     fn fetch_within(
         &self,
-        method: &Method,
-        target: &http::Uri,
-        headers: &HeaderMap,
-        body: Option<&[u8]>,
+        request: Request<'_>,
         deadline: Option<Instant>,
     ) -> Result<CapturedExchange, Error> {
-        runtime::fetch(target, deadline, || {
-            self.capture(method, target, headers, body, deadline)
-        })
+        runtime::fetch(request.target, deadline, || self.capture(request, deadline))
     }
 }
 

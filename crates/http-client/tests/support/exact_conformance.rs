@@ -7,10 +7,11 @@ use std::io::Write;
 use std::net::TcpListener;
 use std::thread;
 
-use archivindex_http_client::{Backend as _, Fidelity};
-use http::{HeaderMap, HeaderValue, Method};
+use archivindex_http_client::{Backend as _, Fidelity, Request};
+use http::{HeaderMap, HeaderValue};
 
 use crate::backend;
+use crate::request::get;
 use crate::server::{fetch, read_request, serve, target};
 
 #[test]
@@ -22,7 +23,10 @@ fn stores_the_request_and_response_bytes_exactly() {
     headers.insert("user-agent", HeaderValue::from_static("backend-test/0.0"));
 
     let captured = backend()
-        .fetch(&Method::GET, &target(port, "/path?q=1"), &headers, None)
+        .fetch(Request {
+            headers: &headers,
+            ..get(&target(port, "/path?q=1"))
+        })
         .expect("a captured exchange");
 
     assert_eq!(captured.request, capture.join().expect("a served request"));

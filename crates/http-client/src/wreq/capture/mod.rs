@@ -19,7 +19,7 @@ use super::{WreqBackend, backend_error};
 use crate::framing::{ResponseCapture, ResponseError, Truncation};
 use crate::message::ResponseMetadata;
 use crate::reconstruct::reconstruct_request;
-use crate::{CapturedExchange, Error, Fidelity, TlsVersion};
+use crate::{CapturedExchange, Error, Fidelity, Request, TlsVersion};
 
 impl WreqBackend {
     /// Build the isolated client with the selected transport settings and capture observer.
@@ -60,12 +60,15 @@ impl WreqBackend {
 
     pub(super) async fn capture(
         &self,
-        method: &Method,
-        target: &Uri,
-        headers: &HeaderMap,
-        body: Option<&[u8]>,
+        request: Request<'_>,
         deadline: Option<Instant>,
     ) -> Result<CapturedExchange, Error> {
+        let Request {
+            method,
+            target,
+            headers,
+            body,
+        } = request;
         let head = *method == Method::HEAD;
         let tap = Arc::new(Tap::new(head, self.max_response_length));
         let (client, orig_headers) = self.client(tap.clone())?;

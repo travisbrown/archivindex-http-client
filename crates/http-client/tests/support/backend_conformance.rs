@@ -11,10 +11,11 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use archivindex_http_client::framing::Truncation;
-use archivindex_http_client::{Backend as _, Error, TlsVersion};
+use archivindex_http_client::{Backend as _, Error, Request, TlsVersion};
 use http::{HeaderMap, HeaderValue, Method, Uri};
 
 use crate::certificate::self_signed;
+use crate::request::get;
 use crate::server::{fetch, read_request, serve, serve_then, target};
 use crate::{backend, trusted_backend};
 
@@ -28,7 +29,10 @@ fn stores_the_request_the_origin_received_and_the_response_it_sent() {
     headers.insert("user-agent", HeaderValue::from_static("backend-test/0.0"));
 
     let captured = backend()
-        .fetch(&Method::GET, &target, &headers, None)
+        .fetch(Request {
+            headers: &headers,
+            ..get(&target)
+        })
         .expect("a captured exchange");
     let received = capture.join().expect("a served request");
 
@@ -65,7 +69,10 @@ fn keeps_a_configured_connection_header() {
     headers.insert("connection", HeaderValue::from_static("keep-alive"));
 
     let captured = backend()
-        .fetch(&Method::GET, &target(port, "/"), &headers, None)
+        .fetch(Request {
+            headers: &headers,
+            ..get(&target(port, "/"))
+        })
         .expect("a captured exchange");
 
     assert_eq!(captured.request, capture.join().expect("a served request"));
@@ -111,7 +118,12 @@ fn stores_a_head_response_through_its_header_section() {
     let (port, capture) = serve(response);
 
     let captured = backend()
-        .fetch(&Method::HEAD, &target(port, "/"), &HeaderMap::new(), None)
+        .fetch(Request {
+            method: &Method::HEAD,
+            target: &target(port, "/"),
+            headers: &HeaderMap::new(),
+            body: None,
+        })
         .expect("a captured exchange");
     capture.join().expect("a served request");
 
@@ -126,12 +138,12 @@ fn frames_and_stores_a_request_body() {
     let (port, capture) = serve(response);
 
     let captured = backend()
-        .fetch(
-            &Method::POST,
-            &target(port, "/submit"),
-            &HeaderMap::new(),
-            Some(b"the request body"),
-        )
+        .fetch(Request {
+            method: &Method::POST,
+            target: &target(port, "/submit"),
+            headers: &HeaderMap::new(),
+            body: Some(b"the request body"),
+        })
         .expect("a captured exchange");
     let received = capture.join().expect("a served request");
 
@@ -191,10 +203,7 @@ fn a_deadline_inside_the_body_truncates_for_time() {
     let captured = backend()
         .io_timeout(Some(Duration::from_secs(5)))
         .fetch_by(
-            &Method::GET,
-            &target(port, "/trickle"),
-            &HeaderMap::new(),
-            None,
+            get(&target(port, "/trickle")),
             Instant::now() + Duration::from_millis(200),
         )
         .expect("a captured exchange");
@@ -212,13 +221,7 @@ fn a_deadline_inside_the_body_truncates_for_time() {
 fn a_passed_deadline_fails_before_connecting() {
     let target: Uri = "http://127.0.0.1:9/".parse().expect("a target");
 
-    let result = backend().fetch_by(
-        &Method::GET,
-        &target,
-        &HeaderMap::new(),
-        None,
-        Instant::now(),
-    );
+    let result = backend().fetch_by(get(&target), Instant::now());
 
     assert!(matches!(
         result,
@@ -229,7 +232,7 @@ fn a_passed_deadline_fails_before_connecting() {
 #[test]
 fn a_non_http_scheme_is_refused() {
     let target: Uri = "ftp://example.com/".parse().expect("a target");
-    let result = backend().fetch(&Method::GET, &target, &HeaderMap::new(), None);
+    let result = backend().fetch(get(&target));
 
     assert!(matches!(result, Err(Error::UnsupportedScheme)));
 }
@@ -262,7 +265,7 @@ fn stores_the_messages_inside_tls_and_reports_its_version() {
             .parse()
             .expect("a target");
         let captured = trusted_backend(&certificate)
-            .fetch(&Method::GET, &target, &HeaderMap::new(), None)
+            .fetch(get(&target))
             .expect("a captured exchange");
         let received = capture.join().expect("a served request");
 
@@ -300,12 +303,9 @@ fn incomplete_and_oversized_heads_fail() {
     ] {
         let (port, server) = serve(response);
 
-        let result = backend().max_response_length(cap).fetch(
-            &Method::GET,
-            &target(port, "/"),
-            &HeaderMap::new(),
-            None,
-        );
+        let result = backend()
+            .max_response_length(cap)
+            .fetch(get(&target(port, "/")));
 
         assert!(result.is_err());
         server.join().unwrap();
@@ -319,7 +319,7 @@ fn malformed_chunk_framing_fails() {
     let (port, server) =
         serve(b"HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\nnot-hex\r\nbody\r\n0\r\n\r\n");
 
-    let result = backend().fetch(&Method::GET, &target(port, "/"), &HeaderMap::new(), None);
+    let result = backend().fetch(get(&target(port, "/")));
 
     assert!(result.is_err());
     server.join().unwrap();
@@ -409,12 +409,7 @@ fn no_hidden_redirects_or_retries() {
 
         let result = backend()
             .io_timeout(Some(Duration::from_millis(200)))
-            .fetch(
-                &Method::GET,
-                &target(port, "/first"),
-                &HeaderMap::new(),
-                None,
-            );
+            .fetch(get(&target(port, "/first")));
         let request = server.join().unwrap();
 
         if status == "disconnect" {

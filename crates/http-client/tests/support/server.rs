@@ -6,9 +6,10 @@ use std::thread;
 use std::time::Duration;
 
 use archivindex_http_client::CapturedExchange;
-use http::{HeaderMap, Method, Uri};
+use http::Uri;
 
 use crate::Backend;
+use crate::request::get;
 
 /// Read one complete HTTP/1.1 request.
 pub fn read_request(stream: &mut impl Read) -> Vec<u8> {
@@ -74,6 +75,6 @@ pub fn fetch(backend: &Backend, port: u16, path: &str) -> CapturedExchange {
     use archivindex_http_client::Backend as _;
 
     backend
-        .fetch(&Method::GET, &target(port, path), &HeaderMap::new(), None)
+        .fetch(get(&target(port, path)))
         .expect("a captured exchange")
 }

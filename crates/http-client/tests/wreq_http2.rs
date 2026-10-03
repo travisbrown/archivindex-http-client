@@ -6,13 +6,15 @@ use std::time::Duration;
 
 use archivindex_http_client::framing::Truncation;
 use archivindex_http_client::wreq::WreqBackend;
-use archivindex_http_client::{Backend as _, Fidelity, TlsVersion};
+use archivindex_http_client::{Backend as _, Fidelity, Request, TlsVersion};
 use http::{HeaderMap, Method, Response, StatusCode, Uri, Version};
 use tokio_rustls::TlsAcceptor;
 use wreq_util::Profile;
 
 #[path = "support/certificate.rs"]
 mod certificate;
+#[path = "support/request.rs"]
+mod request;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum Finish {
@@ -204,7 +206,12 @@ fn captures_negotiated_http2_with_finalized_request_headers_and_trailers() {
     headers.insert("x-hop", "remove-me".parse().unwrap());
 
     let captured = backend
-        .fetch(&Method::POST, &target, &headers, Some(b"request body"))
+        .fetch(Request {
+            method: &Method::POST,
+            target: &target,
+            headers: &headers,
+            body: Some(b"request body"),
+        })
         .unwrap();
     let received = server.join().unwrap();
 
@@ -240,9 +247,7 @@ fn reports_the_tls_version_of_an_http2_connection() {
     ] {
         let (target, backend, server) = serve_with_version(Reply::default(), version);
 
-        let captured = backend
-            .fetch(&Method::GET, &target, &HeaderMap::new(), None)
-            .unwrap();
+        let captured = backend.fetch(request::get(&target)).unwrap();
         server.join().unwrap();
 
         assert_eq!(captured.fidelity, Fidelity::ReconstructedHttp2);
@@ -263,7 +268,12 @@ fn head_and_bodyless_statuses_preserve_representation_length() {
         });
 
         let captured = backend
-            .fetch(&method, &target, &HeaderMap::new(), None)
+            .fetch(Request {
+                method: &method,
+                target: &target,
+                headers: &HeaderMap::new(),
+                body: None,
+            })
             .unwrap();
         server.join().unwrap();
 
@@ -278,9 +288,7 @@ fn head_and_bodyless_statuses_preserve_representation_length() {
 #[test]
 fn caps_count_reconstructed_bytes_and_distinguish_exact_completion() {
     let (target, backend, server) = serve(Reply::default());
-    let complete = backend
-        .fetch(&Method::GET, &target, &HeaderMap::new(), None)
-        .unwrap();
+    let complete = backend.fetch(request::get(&target)).unwrap();
     server.join().unwrap();
 
     for (cap, truncated) in [
@@ -291,7 +299,7 @@ fn caps_count_reconstructed_bytes_and_distinguish_exact_completion() {
 
         let captured = backend
             .max_response_length(Some(cap as u64))
-            .fetch(&Method::GET, &target, &HeaderMap::new(), None)
+            .fetch(request::get(&target))
             .unwrap();
         server.join().unwrap();
 
@@ -313,7 +321,7 @@ fn stalled_and_reset_streams_retain_truncated_payloads() {
 
         let captured = backend
             .io_timeout(Some(Duration::from_millis(100)))
-            .fetch(&Method::GET, &target, &HeaderMap::new(), None)
+            .fetch(request::get(&target))
             .unwrap();
         server.join().unwrap();
 
@@ -332,7 +340,7 @@ fn timeout_before_headers_fails() {
     assert!(
         backend
             .io_timeout(Some(Duration::from_millis(100)))
-            .fetch(&Method::GET, &target, &HeaderMap::new(), None)
+            .fetch(request::get(&target))
             .is_err()
     );
     server.join().unwrap();
@@ -347,9 +355,7 @@ fn content_coding_is_preserved_without_decompression() {
         ..Reply::default()
     });
 
-    let captured = backend
-        .fetch(&Method::GET, &target, &HeaderMap::new(), None)
-        .unwrap();
+    let captured = backend.fetch(request::get(&target)).unwrap();
     server.join().unwrap();
 
     assert_eq!(captured.entity_body().unwrap().as_ref(), GZIP);
@@ -363,7 +369,7 @@ fn response_head_must_fit_the_capture_limit() {
     assert!(
         backend
             .max_response_length(Some(1))
-            .fetch(&Method::GET, &target, &HeaderMap::new(), None)
+            .fetch(request::get(&target))
             .is_err()
     );
     server.join().unwrap();
@@ -381,10 +387,7 @@ fn absolute_deadline_truncates_an_http2_response() {
     let captured = backend
         .io_timeout(None)
         .fetch_by(
-            &Method::GET,
-            &target,
-            &HeaderMap::new(),
-            None,
+            request::get(&target),
             std::time::Instant::now() + Duration::from_secs(1),
         )
         .unwrap();

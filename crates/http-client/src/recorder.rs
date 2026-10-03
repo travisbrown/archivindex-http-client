@@ -25,7 +25,7 @@ use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use fluent_uri::Uri;
-use http::{HeaderMap, Method, Version};
+use http::{Method, Version};
 use rustls::pki_types::ServerName;
 
 use crate::framing::ResponseError;
@@ -34,7 +34,7 @@ use crate::read::read_response;
 use crate::reconstruct::reconstruct_request;
 use crate::{
     Backend, CapturedExchange, DEFAULT_MAX_RESPONSE_LENGTH, DEFAULT_TIMEOUT, Error, Fidelity,
-    InvalidProxy, TlsVersion, request, socks, tls,
+    InvalidProxy, Request, TlsVersion, request, socks, tls,
 };
 
 /// An HTTP/1.1 client that records the exact bytes of one exchange per fetch.
@@ -155,12 +155,15 @@ impl Backend for Recorder {
     /// response with [`CapturedExchange::truncated`] set.
     fn fetch_within(
         &self,
-        method: &Method,
-        target: &http::Uri,
-        headers: &HeaderMap,
-        body: Option<&[u8]>,
+        request: Request<'_>,
         deadline: Option<Instant>,
     ) -> Result<CapturedExchange, Error> {
+        let Request {
+            method,
+            target,
+            headers,
+            body,
+        } = request;
         let tls = match target.scheme_str() {
             Some("http") => false,
             Some("https") => true,

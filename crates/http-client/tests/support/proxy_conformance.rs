@@ -9,9 +9,9 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use archivindex_http_client::{Backend as _, TlsVersion};
-use http::{HeaderMap, Method};
 
 use crate::certificate::self_signed;
+use crate::request::get;
 use crate::server::read_request;
 use crate::{PROXIED_TLS_VERSION_IS_REPORTED, backend, trusted_backend};
 
@@ -131,12 +131,7 @@ fn remote_dns_stores_only_the_http_exchange_and_omits_the_proxy_ip() {
     let captured = backend()
         .proxy(Some(&proxy))
         .unwrap()
-        .fetch(
-            &Method::GET,
-            &format!("http://{HOST}/path").parse().unwrap(),
-            &HeaderMap::new(),
-            None,
-        )
+        .fetch(get(&format!("http://{HOST}/path").parse().unwrap()))
         .unwrap();
     assert_eq!(captured.request, server.join().unwrap()[0]);
     assert_eq!(captured.response, RESPONSE);
@@ -163,7 +158,7 @@ fn local_dns_resolves_hostnames_and_ip_literals_remain_usable() {
         let captured = backend()
             .proxy(Some(&proxy))
             .unwrap()
-            .fetch(&Method::GET, &target, &HeaderMap::new(), None)
+            .fetch(get(&target))
             .unwrap();
         assert_eq!(captured.request, server.join().unwrap());
     }
@@ -195,7 +190,7 @@ fn authenticated_https_uses_origin_tls_and_captures_plaintext() {
         let captured = trusted_backend(&certificate)
             .proxy(Some(&proxy))
             .unwrap()
-            .fetch(&Method::GET, &target, &HeaderMap::new(), None)
+            .fetch(get(&target))
             .unwrap();
         assert_eq!(captured.request, server.join().unwrap());
         assert_eq!(captured.response, RESPONSE);
@@ -225,7 +220,7 @@ fn rejected_proxy_never_falls_back_to_a_direct_connection() {
         backend()
             .proxy(Some(&proxy))
             .unwrap()
-            .fetch(&Method::GET, &target, &HeaderMap::new(), None)
+            .fetch(get(&target))
             .is_err()
     );
     server.join().unwrap();
@@ -247,24 +242,14 @@ fn stalled_proxy_handshakes_obey_connect_timeouts_and_capture_deadlines() {
         .connect_timeout(Some(Duration::from_millis(100)))
         .io_timeout(Some(Duration::from_millis(100)));
     let start = Instant::now();
-    assert!(
-        backend
-            .fetch(&Method::GET, &target, &HeaderMap::new(), None)
-            .is_err()
-    );
+    assert!(backend.fetch(get(&target)).is_err());
     assert!(start.elapsed() < Duration::from_secs(2));
     let start = Instant::now();
     assert!(
         backend
             .connect_timeout(None)
             .io_timeout(None)
-            .fetch_by(
-                &Method::GET,
-                &target,
-                &HeaderMap::new(),
-                None,
-                start + Duration::from_millis(100)
-            )
+            .fetch_by(get(&target), start + Duration::from_millis(100))
             .is_err()
     );
     assert!(start.elapsed() < Duration::from_secs(2));

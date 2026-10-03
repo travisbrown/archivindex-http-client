@@ -23,17 +23,17 @@ asked for it; see [the `wreq` feature](#the-wreq-feature).
 ## Usage
 
 ```rust,no_run
-use archivindex_http_client::Backend;
 use archivindex_http_client::recorder::Recorder;
+use archivindex_http_client::{Backend, Request};
 use http::{HeaderMap, Method};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let captured = Recorder::new().fetch(
-        &Method::GET,
-        &"https://www.example.com/".parse()?,
-        &HeaderMap::new(),
-        None,
-    )?;
+    let captured = Recorder::new().fetch(Request {
+        method: &Method::GET,
+        target: &"https://www.example.com/".parse()?,
+        headers: &HeaderMap::new(),
+        body: None,
+    })?;
 
     println!("{}", captured.response_metadata.status);
     println!("{}", String::from_utf8_lossy(&captured.request));

@@ -18,14 +18,13 @@ mod capture;
 
 use std::time::{Duration, Instant};
 
-use http::{HeaderMap, Method, Uri};
 use serde::de::Deserialize;
 use serde::de::value::StrDeserializer;
 use wreq_util::Profile;
 
 use crate::{
     Backend, CapturedExchange, DEFAULT_MAX_RESPONSE_LENGTH, DEFAULT_TIMEOUT, Error, InvalidProxy,
-    runtime, socks,
+    Request, runtime, socks,
 };
 
 /// An isolated HTTP/1 and HTTP/2 backend using `BoringSSL` and browser emulation.
@@ -169,14 +168,9 @@ impl Backend for WreqBackend {
     /// A deadline covers DNS, connecting, and response capture.
     fn fetch_within(
         &self,
-        method: &Method,
-        target: &Uri,
-        headers: &HeaderMap,
-        body: Option<&[u8]>,
+        request: Request<'_>,
         deadline: Option<Instant>,
     ) -> Result<CapturedExchange, Error> {
-        runtime::fetch(target, deadline, || {
-            self.capture(method, target, headers, body, deadline)
-        })
+        runtime::fetch(request.target, deadline, || self.capture(request, deadline))
     }
 }

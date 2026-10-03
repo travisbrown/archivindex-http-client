@@ -5,7 +5,7 @@ use std::net::TcpListener;
 use std::thread;
 
 use archivindex_http_client::reqwest::ReqwestBackend as Backend;
-use archivindex_http_client::{Backend as _, Fidelity};
+use archivindex_http_client::{Backend as _, Fidelity, Request};
 use http::{HeaderMap, HeaderValue, Method};
 use rustls::pki_types::CertificateDer;
 
@@ -15,6 +15,8 @@ mod backend_conformance;
 mod certificate;
 #[path = "support/proxy_conformance.rs"]
 mod proxy_conformance;
+#[path = "support/request.rs"]
+mod request;
 #[path = "support/server.rs"]
 mod server;
 #[path = "support/trust.rs"]
@@ -98,7 +100,10 @@ fn the_stored_request_shows_the_default_accept_field() {
         }
 
         let captured = backend()
-            .fetch(&Method::GET, &server::target(port, "/"), &headers, None)
+            .fetch(Request {
+                headers: &headers,
+                ..request::get(&server::target(port, "/"))
+            })
             .expect("a captured exchange");
 
         assert_eq!(captured.request, capture.join().expect("a served request"));
@@ -122,12 +127,12 @@ fn request_framing_describes_the_body_that_is_sent() {
         headers.insert("transfer-encoding", HeaderValue::from_static("chunked"));
 
         let captured = backend()
-            .fetch(
-                &Method::POST,
-                &server::target(port, "/"),
-                &headers,
-                Some(body),
-            )
+            .fetch(Request {
+                method: &Method::POST,
+                target: &server::target(port, "/"),
+                headers: &headers,
+                body: Some(body),
+            })
             .expect("a captured exchange");
 
         assert_eq!(captured.request, capture.join().expect("a served request"));
@@ -146,7 +151,7 @@ fn the_stored_request_names_the_normalized_target() {
     let target = server::target(port, "/a/../b?q=1");
 
     let captured = backend()
-        .fetch(&Method::GET, &target, &HeaderMap::new(), None)
+        .fetch(request::get(&target))
         .expect("a captured exchange");
 
     assert_eq!(captured.request, capture.join().expect("a served request"));
