@@ -61,6 +61,7 @@ impl WreqBackend {
     pub(super) async fn capture(
         &self,
         request: Request<'_>,
+        target_uri: fluent_uri::Uri<String>,
         deadline: Option<Instant>,
     ) -> Result<CapturedExchange, Error> {
         let Request {
@@ -136,7 +137,7 @@ impl WreqBackend {
             fidelity,
             tls_version,
             response_metadata,
-            target_uri: fluent_uri::Uri::parse(target.to_string().as_str())?.to_owned(),
+            target_uri,
             ip_address: if self.proxy.is_some() {
                 None
             } else {

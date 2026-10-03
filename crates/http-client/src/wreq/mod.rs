@@ -171,6 +171,8 @@ impl Backend for WreqBackend {
         request: Request<'_>,
         deadline: Option<Instant>,
     ) -> Result<CapturedExchange, Error> {
-        runtime::fetch(request.target, deadline, || self.capture(request, deadline))
+        runtime::fetch(request.target, deadline, |target_uri| {
+            self.capture(request, target_uri, deadline)
+        })
     }
 }

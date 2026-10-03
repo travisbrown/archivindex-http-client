@@ -261,6 +261,30 @@ fn a_non_http_scheme_is_refused() {
     assert!(matches!(result, Err(Error::UnsupportedScheme)));
 }
 
+/// `http::Uri` accepts targets that RFC 3986 does not, and an exchange cannot be stored for one.
+/// The fetch must fail before the request is sent, not after the origin has acted on it.
+#[test]
+fn a_target_that_is_not_a_uri_fails_before_connecting() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback listener");
+    listener
+        .set_nonblocking(true)
+        .expect("a nonblocking listener");
+    let port = listener.local_addr().expect("a bound address").port();
+
+    let result = backend().fetch(Request {
+        method: &Method::POST,
+        target: &target(port, "/a{b}|c"),
+        headers: &HeaderMap::new(),
+        body: Some(b"an effect"),
+    });
+
+    assert!(matches!(result, Err(Error::TargetUri(_))));
+    assert_eq!(
+        listener.accept().expect_err("no connection").kind(),
+        ErrorKind::WouldBlock
+    );
+}
+
 #[test]
 fn stores_the_messages_inside_tls_and_reports_its_version() {
     let response: &[u8] = b"HTTP/1.1 200 OK\r\ncontent-length: 7\r\nx-secure: yes\r\n\r\nsecrets";

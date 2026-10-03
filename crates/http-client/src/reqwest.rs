@@ -176,6 +176,7 @@ impl ReqwestBackend {
     async fn capture(
         &self,
         request: Request<'_>,
+        target_uri: Uri<String>,
         deadline: Option<Instant>,
     ) -> Result<CapturedExchange, Error> {
         let Request {
@@ -184,9 +185,7 @@ impl ReqwestBackend {
             headers,
             body,
         } = request;
-        let target_string = target.to_string();
-        let target_uri = Uri::parse(target_string.as_str())?.to_owned();
-        let url = reqwest::Url::parse(&target_string).map_err(other)?;
+        let url = reqwest::Url::parse(target_uri.as_str()).map_err(other)?;
         // `reqwest` sends the target as the URL Standard normalizes it, so the stored request
         // names that target.
         let sent_target = url.as_str().parse::<http::Uri>().map_err(other)?;
@@ -302,7 +301,9 @@ impl Backend for ReqwestBackend {
         request: Request<'_>,
         deadline: Option<Instant>,
     ) -> Result<CapturedExchange, Error> {
-        runtime::fetch(request.target, deadline, || self.capture(request, deadline))
+        runtime::fetch(request.target, deadline, |target_uri| {
+            self.capture(request, target_uri, deadline)
+        })
     }
 }
 
