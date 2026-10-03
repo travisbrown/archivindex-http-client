@@ -1,18 +1,18 @@
-//! The backend contract for the reqwest backend, checked against scripted loopback servers.
+//! The client contract for the reqwest client, checked against scripted loopback servers.
 
 use std::io::Write as _;
 use std::net::TcpListener;
 use std::thread;
 
-use archivindex_http_client::reqwest::ReqwestBackend as Backend;
-use archivindex_http_client::{Backend as _, Fidelity, Request};
+use archivindex_http_client::reqwest::ReqwestClient as Client;
+use archivindex_http_client::{Client as _, Fidelity, Request};
 use http::{HeaderMap, HeaderValue, Method};
 use rustls::pki_types::CertificateDer;
 
-#[path = "support/backend_conformance.rs"]
-mod backend_conformance;
 #[path = "support/certificate.rs"]
 mod certificate;
+#[path = "support/client_conformance.rs"]
+mod client_conformance;
 #[path = "support/proxy_conformance.rs"]
 mod proxy_conformance;
 #[path = "support/request.rs"]
@@ -25,12 +25,12 @@ mod trust;
 /// `reqwest` does not expose TLS information for a `rustls` connection made through SOCKS.
 const PROXIED_TLS_VERSION_IS_REPORTED: bool = false;
 
-fn backend() -> Backend {
-    Backend::new()
+fn client() -> Client {
+    Client::new()
 }
 
-fn trusted_backend(certificate: &CertificateDer<'static>) -> Backend {
-    backend().tls_config(trust::config(certificate))
+fn trusted_client(certificate: &CertificateDer<'static>) -> Client {
+    client().tls_config(trust::config(certificate))
 }
 
 /// The response head is rebuilt from parsed parts, so it keeps the fields and their order but not
@@ -41,7 +41,7 @@ fn the_response_head_is_reconstructed() {
         b"HTTP/1.1 200 Okey-Dokey\r\nContent-Length: 5\r\nX-MiXeD-CaSe:\t Kept \r\n\r\nhello",
     );
 
-    let captured = server::fetch(&backend(), port, "/");
+    let captured = server::fetch(&client(), port, "/");
     capture.join().expect("a served request");
 
     assert_eq!(
@@ -69,7 +69,7 @@ fn a_chunked_body_is_chunked_again_with_its_trailers() {
         request
     });
 
-    let captured = server::fetch(&backend(), port, "/chunked");
+    let captured = server::fetch(&client(), port, "/chunked");
 
     assert_eq!(captured.request, server.join().unwrap());
     assert!(captured.response.starts_with(
@@ -99,7 +99,7 @@ fn the_stored_request_shows_the_default_accept_field() {
             headers.insert("accept", HeaderValue::from_static(value));
         }
 
-        let captured = backend()
+        let captured = client()
             .fetch(Request {
                 headers: &headers,
                 ..request::get(&server::target(port, "/"))
@@ -126,7 +126,7 @@ fn request_framing_describes_the_body_that_is_sent() {
         headers.insert("content-length", HeaderValue::from_static("99"));
         headers.insert("transfer-encoding", HeaderValue::from_static("chunked"));
 
-        let captured = backend()
+        let captured = client()
             .fetch(Request {
                 method: &Method::POST,
                 target: &server::target(port, "/"),
@@ -150,7 +150,7 @@ fn the_stored_request_names_the_normalized_target() {
     let (port, capture) = server::serve(b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nok");
     let target = server::target(port, "/a/../b?q=1");
 
-    let captured = backend()
+    let captured = client()
         .fetch(request::get(&target))
         .expect("a captured exchange");
 

@@ -15,7 +15,7 @@
 //! complete header section, a size limit, disconnect, or read timeout returns a truncated response.
 //! Before that point, failures return an error. [`Recorder::new`] sets [`DEFAULT_TIMEOUT`] per
 //! connection step and [`DEFAULT_MAX_RESPONSE_LENGTH`] per response. Timeout and size setters
-//! accept `None` to remove their bounds. [`Backend::fetch_by`] adds a deadline, excluding DNS
+//! accept `None` to remove their bounds. [`Client::fetch_by`] adds a deadline, excluding DNS
 //! resolution.
 
 use std::io::{ErrorKind, Read, Write};
@@ -33,7 +33,7 @@ use crate::message::ResponseMetadata;
 use crate::read::read_response;
 use crate::reconstruct::reconstruct_request;
 use crate::{
-    Backend, CapturedExchange, DEFAULT_MAX_RESPONSE_LENGTH, DEFAULT_TIMEOUT, Error, Fidelity,
+    CapturedExchange, Client, DEFAULT_MAX_RESPONSE_LENGTH, DEFAULT_TIMEOUT, Error, Fidelity,
     InvalidProxy, Request, TlsVersion, request, socks, tls,
 };
 
@@ -137,7 +137,7 @@ impl Recorder {
     }
 }
 
-impl Backend for Recorder {
+impl Client for Recorder {
     /// Perform one HTTP/1.1 exchange and record its exact bytes.
     ///
     /// The request is serialized from its parts. Missing `host` and `connection` headers are added.

@@ -1,14 +1,14 @@
-//! A capture backend built on `reqwest`.
+//! A capture client built on `reqwest`.
 //!
-//! [`ReqwestBackend`] performs an HTTP/1.1 exchange with `reqwest` and stores both messages rebuilt
+//! [`ReqwestClient`] performs an HTTP/1.1 exchange with `reqwest` and stores both messages rebuilt
 //! from the parts `reqwest` exposes, so its exchanges have [`Fidelity::ReconstructedHttp1`]. Use
 //! the [`Recorder`](crate::recorder::Recorder) when the stored bytes must be the ones that crossed
 //! the connection.
 //!
-//! The stored request is built from the parts given to `reqwest`, which the backend completes first
-//! so that `reqwest` has nothing to add. The tests compare it with the bytes an origin receives, but
-//! the backend does not observe the connection, so the stored request is what `reqwest` is expected
-//! to send and not a record of what it sent.
+//! The stored request is built from the parts given to `reqwest`, which the client completes first
+//! so that `reqwest` has nothing to add. The tests compare it with the bytes an origin receives,
+//! but the client does not observe the connection, so the stored request is what `reqwest` is
+//! expected to send and not a record of what it sent.
 //!
 //! The stored response differs from the origin's bytes in these ways:
 //!
@@ -18,7 +18,7 @@
 //! - A chunked body is stored chunked, with one chunk for each piece of body data `reqwest`
 //!   delivers. Chunk boundaries are therefore not the origin's, and chunk extensions are lost.
 //!
-//! Content coding is never removed, so the entity-body is the one the origin sent. The backend
+//! Content coding is never removed, so the entity-body is the one the origin sent. The client
 //! turns off each of `reqwest`'s decoders, so this holds even when another crate in the build
 //! enables them.
 //!
@@ -40,17 +40,17 @@ use crate::framing::{ResponseCapture, ResponseError, Truncation};
 use crate::message::ResponseMetadata;
 use crate::reconstruct::{reconstruct_request, reconstruct_response};
 use crate::{
-    Backend, CapturedExchange, DEFAULT_MAX_RESPONSE_LENGTH, DEFAULT_TIMEOUT, Error, Fidelity,
+    CapturedExchange, Client, DEFAULT_MAX_RESPONSE_LENGTH, DEFAULT_TIMEOUT, Error, Fidelity,
     InvalidProxy, Request, TlsVersion, chunked, request, runtime, socks, tls,
 };
 
 /// Performs HTTP/1.1 exchanges with `reqwest` and reconstructs their messages.
 ///
 /// Each fetch uses a new connection. Redirects, retries, decompression, and environment proxy
-/// settings are disabled, and there is no cookie store. The backend is synchronous and may be
+/// settings are disabled, and there is no cookie store. The client is synchronous and may be
 /// called from inside a Tokio runtime.
 #[derive(Clone, Debug)]
-pub struct ReqwestBackend {
+pub struct ReqwestClient {
     tls: Arc<rustls::ClientConfig>,
     proxy: Option<reqwest::Proxy>,
     connect_timeout: Option<Duration>,
@@ -58,8 +58,8 @@ pub struct ReqwestBackend {
     max_response_length: Option<u64>,
 }
 
-impl ReqwestBackend {
-    /// Create a backend using `webpki-roots` and `aws-lc-rs`, with [`DEFAULT_TIMEOUT`] for
+impl ReqwestClient {
+    /// Create a client using `webpki-roots` and `aws-lc-rs`, with [`DEFAULT_TIMEOUT`] for
     /// connecting and for each wait, and [`DEFAULT_MAX_RESPONSE_LENGTH`] for the response.
     #[must_use]
     pub fn new() -> Self {
@@ -128,7 +128,7 @@ impl ReqwestBackend {
         self
     }
 
-    /// Build the client for one exchange.
+    /// Build the `reqwest` client for one exchange.
     fn client(&self) -> Result<reqwest::Client, Error> {
         let builder = reqwest::Client::builder()
             .tls_backend_preconfigured((*self.tls).clone())
@@ -278,13 +278,13 @@ impl ReqwestBackend {
     }
 }
 
-impl Default for ReqwestBackend {
+impl Default for ReqwestClient {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Backend for ReqwestBackend {
+impl Client for ReqwestClient {
     /// Perform one HTTP/1.1 exchange and reconstruct its messages.
     ///
     /// Missing `host` and `connection` headers are added, as is the `accept: */*` that `reqwest`

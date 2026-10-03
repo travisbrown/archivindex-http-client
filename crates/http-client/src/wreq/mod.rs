@@ -1,11 +1,11 @@
 //! HTTP/1 wire capture and reconstructed HTTP/2 capture with browser TLS emulation.
 //!
-//! Each fetch owns an isolated client and runtime. Redirects, retries, cookies, automatic proxies,
-//! decompression, and pooling are disabled. The selected profile supplies TLS and HTTP/2 settings;
-//! configured request headers override profile headers.
+//! Each fetch owns an isolated `wreq` client and runtime. Redirects, retries, cookies, automatic
+//! proxies, decompression, and pooling are disabled. The selected profile supplies TLS and HTTP/2
+//! settings; configured request headers override profile headers.
 //!
 //! HTTP/1 messages are captured exactly, with [`Fidelity::Exact`](crate::Fidelity::Exact). HTTP/2
-//! is used only by a backend that enables it with [`WreqBackend::http2`]. An HTTP/2 exchange is
+//! is used only by a client that enables it with [`WreqClient::http2`]. An HTTP/2 exchange is
 //! reconstructed as HTTP/1.1 messages, with
 //! [`Fidelity::ReconstructedHttp2`](crate::Fidelity::ReconstructedHttp2) identifying its original
 //! protocol. Content coding is preserved and chunked framing retains response trailers. Both HTTP
@@ -23,13 +23,13 @@ use serde::de::value::StrDeserializer;
 use wreq_util::Profile;
 
 use crate::{
-    Backend, CapturedExchange, DEFAULT_MAX_RESPONSE_LENGTH, DEFAULT_TIMEOUT, Error, InvalidProxy,
+    CapturedExchange, Client, DEFAULT_MAX_RESPONSE_LENGTH, DEFAULT_TIMEOUT, Error, InvalidProxy,
     Request, runtime, socks,
 };
 
-/// An isolated HTTP/1 and HTTP/2 backend using `BoringSSL` and browser emulation.
+/// An isolated HTTP/1 and HTTP/2 client using `BoringSSL` and browser emulation.
 #[derive(Clone)]
-pub struct WreqBackend {
+pub struct WreqClient {
     profile: Profile,
     http2: bool,
     proxy: Option<wreq::Proxy>,
@@ -39,9 +39,9 @@ pub struct WreqBackend {
     cert_store: Option<wreq::tls::trust::CertStore>,
 }
 
-impl std::fmt::Debug for WreqBackend {
+impl std::fmt::Debug for WreqClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("WreqBackend")
+        f.debug_struct("WreqClient")
             .field("profile", &self.profile)
             .field("http2", &self.http2)
             .field("proxied", &self.proxy.is_some())
@@ -53,10 +53,10 @@ impl std::fmt::Debug for WreqBackend {
     }
 }
 
-impl WreqBackend {
+impl WreqClient {
     /// Select a profile, including its TLS and HTTP/2 settings.
     ///
-    /// The backend starts with HTTP/2 disabled, [`DEFAULT_TIMEOUT`] for connecting and for idle
+    /// The client starts with HTTP/2 disabled, [`DEFAULT_TIMEOUT`] for connecting and for idle
     /// progress, and [`DEFAULT_MAX_RESPONSE_LENGTH`] for the response.
     #[must_use]
     pub const fn new(profile: Profile) -> Self {
@@ -80,9 +80,9 @@ impl WreqBackend {
 
     /// Allow HTTP/2, which is off unless this is called with `true`.
     ///
-    /// When enabled, the backend offers the profile's ALPN protocols and uses HTTP/2 when the
+    /// When enabled, the client offers the profile's ALPN protocols and uses HTTP/2 when the
     /// origin selects it. When disabled, it offers only `http/1.1`. A browser profile normally
-    /// offers `h2` as well, so the `ClientHello` of a backend without HTTP/2 differs from the
+    /// offers `h2` as well, so the `ClientHello` of a client without HTTP/2 differs from the
     /// emulated browser's in its ALPN extension.
     #[must_use]
     pub const fn http2(mut self, enabled: bool) -> Self {
@@ -93,7 +93,7 @@ impl WreqBackend {
     /// Set an explicit proxy for every request, or use direct connections with `None`.
     ///
     /// Supports `socks5://` for local DNS and `socks5h://` for proxy DNS, with optional username
-    /// and password credentials. Environment proxy settings remain disabled. This backend accepts
+    /// and password credentials. Environment proxy settings remain disabled. This client accepts
     /// exactly the proxies the [`Recorder`](crate::recorder::Recorder) accepts.
     ///
     /// # Errors
@@ -157,12 +157,12 @@ pub fn parse_profile(name: &str) -> Result<Profile, UnknownProfile> {
         .map_err(|_| UnknownProfile(name.to_owned()))
 }
 
-/// Report a wreq failure through the catch-all backend error variant.
-fn backend_error(error: wreq::Error) -> Error {
+/// Report a wreq failure through the catch-all error variant.
+fn other(error: wreq::Error) -> Error {
     Error::Other(Box::new(error))
 }
 
-impl Backend for WreqBackend {
+impl Client for WreqClient {
     /// Perform and retain exactly one application exchange.
     ///
     /// A deadline covers DNS, connecting, and response capture.

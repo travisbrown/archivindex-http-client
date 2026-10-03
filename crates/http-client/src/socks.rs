@@ -1,7 +1,7 @@
 //! SOCKS5 proxy configuration, and CONNECT negotiation (RFC 1928) with RFC 1929 username and
 //! password authentication.
 //!
-//! Every backend checks its proxy URI with [`Proxy::parse`], so they all accept the same proxies.
+//! Every client checks its proxy URI with [`Proxy::parse`], so they all accept the same proxies.
 //! Negotiation uses the recorder's timed transport and is never included in captured HTTP bytes.
 
 use std::io::{ErrorKind, Read, Write};

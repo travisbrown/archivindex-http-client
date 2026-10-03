@@ -1,8 +1,8 @@
-//! The contract every backend satisfies, whether it stores exact or reconstructed messages.
+//! The contract every client satisfies, whether it stores exact or reconstructed messages.
 //!
-//! Scripted responses are written the way a reconstructing backend stores them, with lowercase
+//! Scripted responses are written the way a reconstructing client stores them, with lowercase
 //! field names, canonical reason phrases, and one space after each colon. The stored response can
-//! therefore be compared with the scripted bytes for every backend.
+//! therefore be compared with the scripted bytes for every client.
 
 use std::io::{ErrorKind, Write};
 use std::net::TcpListener;
@@ -11,13 +11,13 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use archivindex_http_client::framing::Truncation;
-use archivindex_http_client::{Backend as _, Error, Request, TlsVersion};
+use archivindex_http_client::{Client as _, Error, Request, TlsVersion};
 use http::{HeaderMap, HeaderValue, Method, Uri};
 
 use crate::certificate::self_signed;
 use crate::request::get;
 use crate::server::{fetch, read_request, serve, serve_then, target};
-use crate::{backend, trusted_backend};
+use crate::{client, trusted_client};
 
 #[test]
 fn stores_the_request_the_origin_received_and_the_response_it_sent() {
@@ -26,9 +26,9 @@ fn stores_the_request_the_origin_received_and_the_response_it_sent() {
 
     let target = target(port, "/path?q=1");
     let mut headers = HeaderMap::new();
-    headers.insert("user-agent", HeaderValue::from_static("backend-test/0.0"));
+    headers.insert("user-agent", HeaderValue::from_static("client-test/0.0"));
 
-    let captured = backend()
+    let captured = client()
         .fetch(Request {
             headers: &headers,
             ..get(&target)
@@ -47,7 +47,7 @@ fn stores_the_request_the_origin_received_and_the_response_it_sent() {
         "{request}"
     );
     assert!(
-        request.contains("user-agent: backend-test/0.0\r\n"),
+        request.contains("user-agent: client-test/0.0\r\n"),
         "{request}"
     );
     assert!(request.contains("connection: close\r\n"), "{request}");
@@ -68,7 +68,7 @@ fn keeps_a_configured_connection_header() {
     let mut headers = HeaderMap::new();
     headers.insert("connection", HeaderValue::from_static("keep-alive"));
 
-    let captured = backend()
+    let captured = client()
         .fetch(Request {
             headers: &headers,
             ..get(&target(port, "/"))
@@ -82,7 +82,7 @@ fn keeps_a_configured_connection_header() {
 }
 
 /// The stored body keeps its chunked framing, and the entity-body is recovered from it. Whether
-/// the stored chunks are the origin's depends on the backend's fidelity.
+/// the stored chunks are the origin's depends on the client's fidelity.
 #[test]
 fn stores_a_chunked_response_with_its_framing() {
     let head: &[u8] = b"HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n";
@@ -91,7 +91,7 @@ fn stores_a_chunked_response_with_its_framing() {
         4\r\nWiki\r\n5\r\npedia\r\n0\r\n\r\n",
     );
 
-    let captured = fetch(&backend(), port, "/chunked");
+    let captured = fetch(&client(), port, "/chunked");
     capture.join().expect("a served request");
 
     assert!(captured.response.starts_with(head));
@@ -105,7 +105,7 @@ fn stores_a_close_delimited_response_to_the_close() {
     let response: &[u8] = b"HTTP/1.1 200 OK\r\nx-no-framing: declared\r\n\r\nthe close ends this";
     let (port, capture) = serve(response);
 
-    let captured = fetch(&backend(), port, "/unframed");
+    let captured = fetch(&client(), port, "/unframed");
     capture.join().expect("a served request");
 
     assert_eq!(captured.response, response);
@@ -127,7 +127,7 @@ fn stores_a_content_coded_response_as_the_origin_sent_it() {
     for response in responses {
         let (port, capture) = serve(response);
 
-        let captured = fetch(&backend(), port, "/coded");
+        let captured = fetch(&client(), port, "/coded");
 
         assert_eq!(captured.request, capture.join().expect("a served request"));
         assert_eq!(captured.response, response);
@@ -141,7 +141,7 @@ fn stores_a_head_response_through_its_header_section() {
     let response: &[u8] = b"HTTP/1.1 200 OK\r\ncontent-length: 5\r\n\r\n";
     let (port, capture) = serve(response);
 
-    let captured = backend()
+    let captured = client()
         .fetch(Request {
             method: &Method::HEAD,
             target: &target(port, "/"),
@@ -161,7 +161,7 @@ fn frames_and_stores_a_request_body() {
     let response: &[u8] = b"HTTP/1.1 204 No Content\r\n\r\n";
     let (port, capture) = serve(response);
 
-    let captured = backend()
+    let captured = client()
         .fetch(Request {
             method: &Method::POST,
             target: &target(port, "/submit"),
@@ -192,7 +192,7 @@ fn replaces_the_framing_headers_of_the_caller() {
         headers.insert("content-length", HeaderValue::from_static("99"));
         headers.insert("transfer-encoding", HeaderValue::from_static("chunked"));
 
-        let captured = backend()
+        let captured = client()
             .fetch(Request {
                 method: &method,
                 target: &target(port, "/"),
@@ -223,7 +223,7 @@ fn the_length_bound_truncates_the_response() {
         b"HTTP/1.1 200 OK\r\ncontent-length: 26\r\n\r\nabcdefghijklmnopqrstuvwxyz";
     let (port, capture) = serve(response);
 
-    let captured = fetch(&backend().max_response_length(Some(45)), port, "/truncated");
+    let captured = fetch(&client().max_response_length(Some(45)), port, "/truncated");
     capture.join().expect("a served request");
 
     assert_eq!(captured.response, &response[..45]);
@@ -237,7 +237,7 @@ fn a_read_timeout_inside_the_body_truncates_for_time() {
     let (port, capture) = serve_then(response, Duration::from_millis(500));
 
     let captured = fetch(
-        &backend().io_timeout(Some(Duration::from_millis(100))),
+        &client().io_timeout(Some(Duration::from_millis(100))),
         port,
         "/slow",
     );
@@ -263,7 +263,7 @@ fn a_deadline_inside_the_body_truncates_for_time() {
         }
     });
 
-    let captured = backend()
+    let captured = client()
         .io_timeout(Some(Duration::from_secs(5)))
         .fetch_by(
             get(&target(port, "/trickle")),
@@ -284,7 +284,7 @@ fn a_deadline_inside_the_body_truncates_for_time() {
 fn a_passed_deadline_fails_before_connecting() {
     let target: Uri = "http://127.0.0.1:9/".parse().expect("a target");
 
-    let result = backend().fetch_by(get(&target), Instant::now());
+    let result = client().fetch_by(get(&target), Instant::now());
 
     assert!(matches!(
         result,
@@ -295,7 +295,7 @@ fn a_passed_deadline_fails_before_connecting() {
 #[test]
 fn a_non_http_scheme_is_refused() {
     let target: Uri = "ftp://example.com/".parse().expect("a target");
-    let result = backend().fetch(get(&target));
+    let result = client().fetch(get(&target));
 
     assert!(matches!(result, Err(Error::UnsupportedScheme)));
 }
@@ -310,7 +310,7 @@ fn a_target_that_is_not_a_uri_fails_before_connecting() {
         .expect("a nonblocking listener");
     let port = listener.local_addr().expect("a bound address").port();
 
-    let result = backend().fetch(Request {
+    let result = client().fetch(Request {
         method: &Method::POST,
         target: &target(port, "/a{b}|c"),
         headers: &HeaderMap::new(),
@@ -351,7 +351,7 @@ fn stores_the_messages_inside_tls_and_reports_its_version() {
         let target: Uri = format!("https://localhost:{port}/tls")
             .parse()
             .expect("a target");
-        let captured = trusted_backend(&certificate)
+        let captured = trusted_client(&certificate)
             .fetch(get(&target))
             .expect("a captured exchange");
         let received = capture.join().expect("a served request");
@@ -372,7 +372,7 @@ fn keeps_what_arrived_before_a_disconnect_after_the_head() {
     let response = b"HTTP/1.1 200 OK\r\ncontent-length: 100\r\n\r\nshort";
     let (port, server) = serve(response);
 
-    let captured = fetch(&backend(), port, "/disconnect");
+    let captured = fetch(&client(), port, "/disconnect");
 
     assert_eq!(captured.response, response);
     assert_eq!(captured.truncated, Some(Truncation::Disconnect));
@@ -390,7 +390,7 @@ fn incomplete_and_oversized_heads_fail() {
     ] {
         let (port, server) = serve(response);
 
-        let result = backend()
+        let result = client()
             .max_response_length(cap)
             .fetch(get(&target(port, "/")));
 
@@ -406,7 +406,7 @@ fn malformed_chunk_framing_fails() {
     let (port, server) =
         serve(b"HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\nnot-hex\r\nbody\r\n0\r\n\r\n");
 
-    let result = backend().fetch(get(&target(port, "/")));
+    let result = client().fetch(get(&target(port, "/")));
 
     assert!(result.is_err());
     server.join().unwrap();
@@ -422,7 +422,7 @@ fn a_limit_equal_to_the_response_length_does_not_truncate() {
         let (port, server) = serve(response);
 
         let captured = fetch(
-            &backend().max_response_length(Some(response.len() as u64)),
+            &client().max_response_length(Some(response.len() as u64)),
             port,
             "/cap",
         );
@@ -439,7 +439,7 @@ fn concurrent_captures_keep_their_own_bytes() {
         .map(|index| {
             thread::spawn(move || {
                 let (port, server) = serve(b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nok");
-                let captured = fetch(&backend(), port, &format!("/request-{index}"));
+                let captured = fetch(&client(), port, &format!("/request-{index}"));
 
                 assert_eq!(captured.request, server.join().unwrap());
                 assert!(
@@ -462,7 +462,7 @@ fn a_known_length_limit_does_not_wait_for_the_rest_of_the_body() {
     let (port, server) = serve_then(response, Duration::from_millis(500));
 
     let captured = fetch(
-        &backend().max_response_length(Some(response.len() as u64)),
+        &client().max_response_length(Some(response.len() as u64)),
         port,
         "/limit",
     );
@@ -494,7 +494,7 @@ fn no_hidden_redirects_or_retries() {
             request
         });
 
-        let result = backend()
+        let result = client()
             .io_timeout(Some(Duration::from_millis(200)))
             .fetch(get(&target(port, "/first")));
         let request = server.join().unwrap();
@@ -512,7 +512,7 @@ fn no_hidden_redirects_or_retries() {
     }
 }
 
-/// Backends are synchronous, and callers on an async runtime call them without `spawn_blocking`
+/// Clients are synchronous, and callers on an async runtime call them without `spawn_blocking`
 /// only if a fetch never blocks on that runtime from inside it.
 #[test]
 fn a_fetch_works_inside_a_tokio_runtime() {
@@ -522,7 +522,7 @@ fn a_fetch_works_inside_a_tokio_runtime() {
 
     runtime.block_on(async {
         let (port, server) = serve(b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nok");
-        let captured = fetch(&backend(), port, "/nested");
+        let captured = fetch(&client(), port, "/nested");
 
         assert_eq!(captured.request, server.join().unwrap());
     });

@@ -1,4 +1,4 @@
-//! Trust in a test certificate for the backends configured with `rustls`.
+//! Trust in a test certificate for the clients configured with `rustls`.
 
 use std::sync::Arc;
 

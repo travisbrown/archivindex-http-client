@@ -1,27 +1,27 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 //! HTTP clients that capture the request and response messages of each exchange.
 //!
-//! A [`Backend`] performs one HTTP exchange and returns its stored HTTP/1 representation in a
-//! [`CapturedExchange`]. No backend follows redirects, decodes content, keeps cookies, retries, or
+//! A [`Client`] performs one HTTP exchange and returns its stored HTTP/1 representation in a
+//! [`CapturedExchange`]. No client follows redirects, decodes content, keeps cookies, retries, or
 //! reuses a connection, so one fetch is exactly one request and one response.
 //!
-//! Three backends are provided:
+//! Three clients are provided:
 //!
 //! - [`Recorder`](recorder::Recorder) performs HTTP/1.1 over its own connection and stores the
 //!   exact bytes sent and received.
-//! - [`ReqwestBackend`](reqwest::ReqwestBackend) performs HTTP/1.1 with `reqwest` and reconstructs
+//! - [`ReqwestClient`](reqwest::ReqwestClient) performs HTTP/1.1 with `reqwest` and reconstructs
 //!   both messages from the parts `reqwest` exposes.
-//! - `WreqBackend` (in the `wreq` module, behind the `wreq` feature) uses `BoringSSL` with browser
+//! - `WreqClient` (in the `wreq` module, behind the `wreq` feature) uses `BoringSSL` with browser
 //!   emulation. It stores HTTP/1 bytes exactly and reconstructs HTTP/2 exchanges, which it
 //!   negotiates only when asked to.
 //!
-//! [`CapturedExchange::fidelity`] says which of these a stored exchange is. Every backend frames
+//! [`CapturedExchange::fidelity`] says which of these a stored exchange is. Every client frames
 //! and truncates responses with [`ResponseCapture`](framing::ResponseCapture), so a size limit, a
 //! disconnect, or a timeout after the header section returns a truncated response with the same
-//! bytes whichever backend performed the exchange.
+//! bytes whichever client performed the exchange.
 //!
 //! [`message`] parses stored messages, [`body`] removes transfer coding from them, and
-//! [`reconstruct`] rebuilds HTTP/1.1 messages for backends that only see parsed parts.
+//! [`reconstruct`] rebuilds HTTP/1.1 messages for clients that only see parsed parts.
 
 pub mod body;
 mod chunked;
@@ -52,16 +52,16 @@ use http::{HeaderMap, Method, Uri as HttpUri};
 use crate::framing::{ResponseError, Truncation};
 use crate::message::ResponseMetadata;
 
-/// The connection and I/O timeout a backend starts from.
+/// The connection and I/O timeout a client starts from.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// The response-size bound a backend starts from, in bytes.
+/// The response-size bound a client starts from, in bytes.
 pub const DEFAULT_MAX_RESPONSE_LENGTH: u64 = 256 * 1024 * 1024;
 
-/// Errors returned by a backend while performing a captured exchange.
+/// Errors returned by a client while performing a captured exchange.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    /// A backend failed in a way that has no variant of its own.
+    /// A client failed in a way that has no variant of its own.
     ///
     /// The [`Recorder`](recorder::Recorder) never produces this variant.
     #[error(transparent)]
@@ -89,9 +89,9 @@ pub enum Error {
     Response(#[from] ResponseError),
 }
 
-/// A proxy URI that the backends cannot use, with the reason.
+/// A proxy URI that the clients cannot use, with the reason.
 ///
-/// Every backend accepts the same proxies: `socks5://` and `socks5h://` URIs with a host, an
+/// Every client accepts the same proxies: `socks5://` and `socks5h://` URIs with a host, an
 /// optional port, and optional username and password credentials.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 #[error("invalid proxy: {0}")]
@@ -105,7 +105,7 @@ pub enum Fidelity {
     /// The exchange used HTTP/1, and both messages were rebuilt from parsed parts.
     ///
     /// Header names are lowercased, the reason phrase is the canonical one, and chunk boundaries
-    /// are those the client delivered rather than those the origin sent.
+    /// are those the HTTP library delivered rather than those the origin sent.
     ReconstructedHttp1,
     /// The exchange used HTTP/2, and both messages were rebuilt as HTTP/1.1 messages.
     ReconstructedHttp2,
@@ -133,7 +133,7 @@ pub struct CapturedExchange {
     pub response: Vec<u8>,
     /// How the stored messages relate to the bytes that crossed the connection.
     pub fidelity: Fidelity,
-    /// The negotiated TLS version, when the exchange used TLS and the backend can observe it.
+    /// The negotiated TLS version, when the exchange used TLS and the client can observe it.
     pub tls_version: Option<TlsVersion>,
     /// Parsed fields and boundaries of the stored response.
     pub response_metadata: ResponseMetadata,
@@ -183,7 +183,7 @@ pub struct Request<'a> {
 ///
 /// Implementations are shared across threads, so they must be `Send`, `Sync`, and cheap to clone
 /// behind an `Arc`.
-pub trait Backend: Debug + Send + Sync + 'static {
+pub trait Client: Debug + Send + Sync + 'static {
     /// Perform one exchange, finishing before `deadline` when one is given.
     ///
     /// A deadline that passes before a response header section arrives is an error; one that

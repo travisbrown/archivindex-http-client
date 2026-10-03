@@ -1,4 +1,4 @@
-//! The TLS client configuration the `rustls` backends start from.
+//! The TLS configuration that the clients built on `rustls` start from.
 
 use std::sync::Arc;
 

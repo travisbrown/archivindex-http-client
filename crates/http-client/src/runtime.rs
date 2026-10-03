@@ -1,4 +1,4 @@
-//! Synchronous entry to the backends that run on Tokio.
+//! Synchronous entry to the clients that run on Tokio.
 
 use std::io::ErrorKind;
 use std::time::Instant;

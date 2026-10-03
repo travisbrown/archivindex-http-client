@@ -1,4 +1,4 @@
-//! Request preparation shared by the backends that send a request built from its parts.
+//! Request preparation shared by the clients that send a request built from its parts.
 
 use http::uri::Authority;
 use http::{HeaderMap, HeaderValue, header};

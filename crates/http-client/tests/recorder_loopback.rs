@@ -1,12 +1,12 @@
-//! The backend contract for the recorder, checked against scripted loopback servers.
+//! The client contract for the recorder, checked against scripted loopback servers.
 
-use archivindex_http_client::recorder::Recorder as Backend;
+use archivindex_http_client::recorder::Recorder as Client;
 use rustls::pki_types::CertificateDer;
 
-#[path = "support/backend_conformance.rs"]
-mod backend_conformance;
 #[path = "support/certificate.rs"]
 mod certificate;
+#[path = "support/client_conformance.rs"]
+mod client_conformance;
 #[path = "support/exact_conformance.rs"]
 mod exact_conformance;
 #[path = "support/proxy_conformance.rs"]
@@ -20,10 +20,10 @@ mod trust;
 
 const PROXIED_TLS_VERSION_IS_REPORTED: bool = true;
 
-fn backend() -> Backend {
-    Backend::new()
+fn client() -> Client {
+    Client::new()
 }
 
-fn trusted_backend(certificate: &CertificateDer<'static>) -> Backend {
-    backend().tls_config(trust::config(certificate))
+fn trusted_client(certificate: &CertificateDer<'static>) -> Client {
+    client().tls_config(trust::config(certificate))
 }

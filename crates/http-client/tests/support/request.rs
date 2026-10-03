@@ -1,4 +1,4 @@
-//! The request most backend tests make.
+//! The request most client tests make.
 
 use std::sync::LazyLock;
 

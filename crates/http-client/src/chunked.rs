@@ -1,6 +1,6 @@
-//! Chunk framing for response bodies a backend receives already decoded.
+//! Chunk framing for response bodies a client receives already decoded.
 //!
-//! A backend that reconstructs a chunked response writes each piece of body data it receives as
+//! A client that reconstructs a chunked response writes each piece of body data it receives as
 //! one chunk, so the stored message keeps the framing its header section declares.
 
 use http::{HeaderMap, header};

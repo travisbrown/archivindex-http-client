@@ -9,7 +9,7 @@ for the [Archivindex][archivindex] projects. It can store the exact bytes of an 
 and it can reconstruct the messages of exchanges made with [`reqwest`][reqwest] or, behind the
 `wreq` feature, with [`wreq`][wreq] and its browser emulation (including HTTP/2, which is opt-in).
 
-See the [crate README](crates/http-client/README.md) for the backends, their capture
+See the [crate README](crates/http-client/README.md) for the clients, their capture
 contracts, and usage examples.
 
 ## Repository
@@ -30,7 +30,7 @@ cargo test --locked
 RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps
 ```
 
-Add `--features wreq` to either command to include the `wreq` backend. The remaining checks that CI
+Add `--features wreq` to either command to include the `wreq` client. The remaining checks that CI
 runs are:
 
 ```console

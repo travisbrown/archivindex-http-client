@@ -1,13 +1,13 @@
-//! The backend contract for the wreq backend, checked against scripted loopback servers.
+//! The client contract for the wreq client, checked against scripted loopback servers.
 
-use archivindex_http_client::wreq::{WreqBackend as Backend, parse_profile};
+use archivindex_http_client::wreq::{WreqClient as Client, parse_profile};
 use rustls::pki_types::CertificateDer;
 use wreq_util::Profile;
 
-#[path = "support/backend_conformance.rs"]
-mod backend_conformance;
 #[path = "support/certificate.rs"]
 mod certificate;
+#[path = "support/client_conformance.rs"]
+mod client_conformance;
 #[path = "support/exact_conformance.rs"]
 mod exact_conformance;
 #[path = "support/proxy_conformance.rs"]
@@ -19,17 +19,17 @@ mod server;
 
 const PROXIED_TLS_VERSION_IS_REPORTED: bool = true;
 
-const fn backend() -> Backend {
-    Backend::new(Profile::Chrome136)
+const fn client() -> Client {
+    Client::new(Profile::Chrome136)
 }
 
-fn trusted_backend(certificate: &CertificateDer<'static>) -> Backend {
+fn trusted_client(certificate: &CertificateDer<'static>) -> Client {
     let store = wreq::tls::trust::CertStore::builder()
         .add_der_cert(certificate)
         .build()
         .expect("a root");
 
-    backend().tls_cert_store(store)
+    client().tls_cert_store(store)
 }
 
 #[test]
@@ -43,9 +43,9 @@ fn profiles_are_named_explicitly_and_validated() {
 /// The profile supplies the default request headers, so replacing it changes the stored request.
 #[test]
 fn the_profile_can_be_replaced() {
-    let user_agent = |backend: &Backend| {
+    let user_agent = |client: &Client| {
         let (port, server) = server::serve(b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nok");
-        let captured = server::fetch(backend, port, "/");
+        let captured = server::fetch(client, port, "/");
         assert_eq!(captured.request, server.join().unwrap());
 
         String::from_utf8(captured.request)
@@ -56,17 +56,17 @@ fn the_profile_can_be_replaced() {
             .to_owned()
     };
 
-    assert!(user_agent(&backend()).contains("Chrome/136"));
-    assert!(user_agent(&backend().profile(Profile::Firefox136)).contains("Firefox/136"));
+    assert!(user_agent(&client()).contains("Chrome/136"));
+    assert!(user_agent(&client().profile(Profile::Firefox136)).contains("Firefox/136"));
 }
 
-/// HTTP/2 is opt-in: a backend that has not enabled it offers only `http/1.1`, so an origin that
+/// HTTP/2 is opt-in: a client that has not enabled it offers only `http/1.1`, so an origin that
 /// prefers `h2` still gets an HTTP/1.1 exchange, stored exactly.
 #[test]
 fn http2_is_not_negotiated_unless_enabled() {
     use std::io::Write as _;
 
-    use archivindex_http_client::{Backend as _, Fidelity};
+    use archivindex_http_client::{Client as _, Fidelity};
 
     let response: &[u8] = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
     let (certificate, mut config) =
@@ -87,7 +87,7 @@ fn http2_is_not_negotiated_unless_enabled() {
         request
     });
 
-    let captured = trusted_backend(&certificate)
+    let captured = trusted_client(&certificate)
         .fetch(request::get(
             &format!("https://localhost:{port}/").parse().unwrap(),
         ))

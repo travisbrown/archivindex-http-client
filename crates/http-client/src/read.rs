@@ -44,7 +44,7 @@ fn fill(source: &mut impl Read, buffer: &mut [u8]) -> std::io::Result<ReadEvent>
     }
 }
 
-/// Read one response verbatim using the incremental parser every backend shares.
+/// Read one response verbatim using the incremental parser every client shares.
 pub fn read_response(
     source: &mut impl Read,
     head_request: bool,

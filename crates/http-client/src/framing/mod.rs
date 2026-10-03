@@ -1,8 +1,8 @@
-//! Message framing shared by every capture backend.
+//! Message framing shared by every capture client.
 //!
 //! [`ResponseCapture`] turns received bytes into the stored response of one exchange. It owns the
 //! rules that decide where a response ends, when it is complete, and why it was cut short, so any
-//! backend driving it records the same bytes as any other.
+//! client driving it records the same bytes as any other.
 
 mod chunk;
 mod head;
@@ -52,11 +52,11 @@ pub enum ResponseError {
     UnterminatedChunk,
 }
 
-/// Incremental capture of one response's wire bytes, shared by every backend.
+/// Incremental capture of one response's wire bytes, shared by every client.
 ///
 /// Feed it transport reads with [`push`](Self::push) and close it with [`end`](Self::end). The
 /// final response is bounded by the configured cap. Interim headers have a separate 64 KiB bound
-/// and are discarded, so every backend uses the same framing, truncation, and byte content.
+/// and are discarded, so every client uses the same framing, truncation, and byte content.
 pub struct ResponseCapture {
     buffer: Vec<u8>,
     head_request: bool,
@@ -89,7 +89,7 @@ impl ResponseCapture {
 
     /// Whether the response is complete, capped, or truncated, so no further bytes are wanted.
     ///
-    /// A backend should stop reading and dispose of its connection once this is true.
+    /// A client should stop reading and dispose of its connection once this is true.
     #[must_use]
     pub const fn is_done(&self) -> bool {
         self.done

@@ -1,4 +1,4 @@
-//! The SOCKS5 proxy contract every backend satisfies.
+//! The SOCKS5 proxy contract every client satisfies.
 //!
 //! The proxy serves the destination itself, so reserved hostnames need no DNS.
 
@@ -8,12 +8,12 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use archivindex_http_client::{Backend as _, TlsVersion};
+use archivindex_http_client::{Client as _, TlsVersion};
 
 use crate::certificate::self_signed;
 use crate::request::get;
 use crate::server::read_request;
-use crate::{PROXIED_TLS_VERSION_IS_REPORTED, backend, trusted_backend};
+use crate::{PROXIED_TLS_VERSION_IS_REPORTED, client, trusted_client};
 
 const HOST: &str = "origin.invalid";
 const RESPONSE: &[u8] = b"HTTP/1.1 200 OK\r\nx-kept: value\r\ncontent-length: 2\r\n\r\nok";
@@ -128,7 +128,7 @@ fn serve_proxy(responses: Vec<Vec<u8>>) -> (String, thread::JoinHandle<Vec<Vec<u
 #[test]
 fn remote_dns_stores_only_the_http_exchange_and_omits_the_proxy_ip() {
     let (proxy, server) = serve_proxy(vec![RESPONSE.to_vec()]);
-    let captured = backend()
+    let captured = client()
         .proxy(Some(&proxy))
         .unwrap()
         .fetch(get(&format!("http://{HOST}/path").parse().unwrap()))
@@ -155,7 +155,7 @@ fn local_dns_resolves_hostnames_and_ip_literals_remain_usable() {
             request
         });
         let target = format!("http://{host}:8080/local").parse().unwrap();
-        let captured = backend()
+        let captured = client()
             .proxy(Some(&proxy))
             .unwrap()
             .fetch(get(&target))
@@ -187,7 +187,7 @@ fn authenticated_https_uses_origin_tls_and_captures_plaintext() {
             request
         });
         let target = format!("https://{HOST}/secure").parse().unwrap();
-        let captured = trusted_backend(&certificate)
+        let captured = trusted_client(&certificate)
             .proxy(Some(&proxy))
             .unwrap()
             .fetch(get(&target))
@@ -217,7 +217,7 @@ fn rejected_proxy_never_falls_back_to_a_direct_connection() {
         .parse()
         .unwrap();
     assert!(
-        backend()
+        client()
             .proxy(Some(&proxy))
             .unwrap()
             .fetch(get(&target))
@@ -236,17 +236,17 @@ fn stalled_proxy_handshakes_obey_connect_timeouts_and_capture_deadlines() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let proxy = format!("socks5h://{}", listener.local_addr().unwrap());
     let target = format!("http://{HOST}/").parse().unwrap();
-    let backend = backend()
+    let client = client()
         .proxy(Some(&proxy))
         .unwrap()
         .connect_timeout(Some(Duration::from_millis(100)))
         .io_timeout(Some(Duration::from_millis(100)));
     let start = Instant::now();
-    assert!(backend.fetch(get(&target)).is_err());
+    assert!(client.fetch(get(&target)).is_err());
     assert!(start.elapsed() < Duration::from_secs(2));
     let start = Instant::now();
     assert!(
-        backend
+        client
             .connect_timeout(None)
             .io_timeout(None)
             .fetch_by(get(&target), start + Duration::from_millis(100))
@@ -265,6 +265,6 @@ fn invalid_proxy_uri_fails_before_fetching() {
         "socks5h://localhost?query",
         "socks5h://user@localhost",
     ] {
-        assert!(backend().proxy(Some(proxy)).is_err());
+        assert!(client().proxy(Some(proxy)).is_err());
     }
 }

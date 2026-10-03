@@ -1,4 +1,4 @@
-//! Scripted loopback origins for the backend tests.
+//! Scripted loopback origins for the client tests.
 
 use std::io::{Read, Write};
 use std::net::TcpListener;
@@ -8,7 +8,7 @@ use std::time::Duration;
 use archivindex_http_client::CapturedExchange;
 use http::Uri;
 
-use crate::Backend;
+use crate::Client;
 use crate::request::get;
 
 /// Read one complete HTTP/1.1 request.
@@ -71,10 +71,10 @@ pub fn target(port: u16, path: &str) -> Uri {
 }
 
 /// Fetch from a loopback origin without optional headers or a body.
-pub fn fetch(backend: &Backend, port: u16, path: &str) -> CapturedExchange {
-    use archivindex_http_client::Backend as _;
+pub fn fetch(client: &Client, port: u16, path: &str) -> CapturedExchange {
+    use archivindex_http_client::Client as _;
 
-    backend
+    client
         .fetch(get(&target(port, path)))
         .expect("a captured exchange")
 }

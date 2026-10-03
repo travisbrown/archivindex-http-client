@@ -1,4 +1,4 @@
-//! The contract of the backends that store HTTP/1 messages exactly.
+//! The contract of the clients that store HTTP/1 messages exactly.
 //!
 //! These responses use spellings that reconstruction would lose: mixed-case field names,
 //! non-canonical reason phrases, unusual whitespace, chunk extensions, and interim responses.
@@ -7,10 +7,10 @@ use std::io::Write;
 use std::net::TcpListener;
 use std::thread;
 
-use archivindex_http_client::{Backend as _, Fidelity, Request};
+use archivindex_http_client::{Client as _, Fidelity, Request};
 use http::{HeaderMap, HeaderValue};
 
-use crate::backend;
+use crate::client;
 use crate::request::get;
 use crate::server::{fetch, read_request, serve, target};
 
@@ -20,9 +20,9 @@ fn stores_the_request_and_response_bytes_exactly() {
         b"HTTP/1.1 200 Okey-Dokey\r\nContent-Length: 5\r\nX-MiXeD-CaSe: Kept\r\n\r\nhello";
     let (port, capture) = serve(response);
     let mut headers = HeaderMap::new();
-    headers.insert("user-agent", HeaderValue::from_static("backend-test/0.0"));
+    headers.insert("user-agent", HeaderValue::from_static("client-test/0.0"));
 
-    let captured = backend()
+    let captured = client()
         .fetch(Request {
             headers: &headers,
             ..get(&target(port, "/path?q=1"))
@@ -42,7 +42,7 @@ fn stores_a_chunked_response_verbatim() {
         4;ext=a\r\nWiki\r\n5\r\npedia\r\n0\r\nX-Checksum: abc\r\n\r\n";
     let (port, capture) = serve(response);
 
-    let captured = fetch(&backend(), port, "/chunked");
+    let captured = fetch(&client(), port, "/chunked");
     capture.join().expect("a served request");
 
     assert_eq!(captured.response, response);
@@ -70,7 +70,7 @@ fn preserves_duplicate_headers_whitespace_and_fragmented_chunks_after_an_interim
         request
     });
 
-    let captured = fetch(&backend(), port, "/fragmented");
+    let captured = fetch(&client(), port, "/fragmented");
 
     assert_eq!(captured.request, server.join().unwrap());
     assert_eq!(captured.response, response);

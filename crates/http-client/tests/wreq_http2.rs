@@ -5,8 +5,8 @@ use std::thread;
 use std::time::Duration;
 
 use archivindex_http_client::framing::Truncation;
-use archivindex_http_client::wreq::WreqBackend;
-use archivindex_http_client::{Backend as _, Fidelity, Request, TlsVersion};
+use archivindex_http_client::wreq::WreqClient;
+use archivindex_http_client::{Client as _, Fidelity, Request, TlsVersion};
 use http::{HeaderMap, Method, Response, StatusCode, Uri, Version};
 use tokio_rustls::TlsAcceptor;
 use wreq_util::Profile;
@@ -51,16 +51,16 @@ struct Received {
 }
 
 /// Serve one HTTP/2 exchange over TLS 1.3.
-fn serve(reply: Reply) -> (Uri, WreqBackend, thread::JoinHandle<Received>) {
+fn serve(reply: Reply) -> (Uri, WreqClient, thread::JoinHandle<Received>) {
     serve_with_version(reply, &rustls::version::TLS13)
 }
 
-/// Serve one HTTP/2 exchange, returning the target, a backend that trusts the server and has
+/// Serve one HTTP/2 exchange, returning the target, a client that trusts the server and has
 /// HTTP/2 enabled, and the request the server received.
 fn serve_with_version(
     reply: Reply,
     version: &'static rustls::SupportedProtocolVersion,
-) -> (Uri, WreqBackend, thread::JoinHandle<Received>) {
+) -> (Uri, WreqClient, thread::JoinHandle<Received>) {
     let (certificate, mut config) = certificate::self_signed("localhost", &[version]);
     config.alpn_protocols = vec![b"h2".to_vec()];
     let acceptor = TlsAcceptor::from(Arc::new(config));
@@ -68,7 +68,7 @@ fn serve_with_version(
         .add_der_cert(&certificate)
         .build()
         .unwrap();
-    let backend = WreqBackend::new(Profile::Chrome136)
+    let client = WreqClient::new(Profile::Chrome136)
         .http2(true)
         .tls_cert_store(store);
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -124,7 +124,7 @@ fn serve_with_version(
         format!("https://localhost:{port}/wp-json?q=1")
             .parse()
             .unwrap(),
-        backend,
+        client,
         server,
     )
 }
@@ -195,7 +195,7 @@ async fn answer(
 
 #[test]
 fn captures_negotiated_http2_with_finalized_request_headers_and_trailers() {
-    let (target, backend, server) = serve(Reply {
+    let (target, client, server) = serve(Reply {
         finish: Finish::Trailers,
         ..Reply::default()
     });
@@ -205,7 +205,7 @@ fn captures_negotiated_http2_with_finalized_request_headers_and_trailers() {
     headers.insert("connection", "x-hop".parse().unwrap());
     headers.insert("x-hop", "remove-me".parse().unwrap());
 
-    let captured = backend
+    let captured = client
         .fetch(Request {
             method: &Method::POST,
             target: &target,
@@ -245,9 +245,9 @@ fn reports_the_tls_version_of_an_http2_connection() {
         (&rustls::version::TLS12, TlsVersion::V1_2),
         (&rustls::version::TLS13, TlsVersion::V1_3),
     ] {
-        let (target, backend, server) = serve_with_version(Reply::default(), version);
+        let (target, client, server) = serve_with_version(Reply::default(), version);
 
-        let captured = backend.fetch(request::get(&target)).unwrap();
+        let captured = client.fetch(request::get(&target)).unwrap();
         server.join().unwrap();
 
         assert_eq!(captured.fidelity, Fidelity::ReconstructedHttp2);
@@ -262,12 +262,12 @@ fn head_and_bodyless_statuses_preserve_representation_length() {
         (Method::GET, StatusCode::NO_CONTENT),
         (Method::GET, StatusCode::NOT_MODIFIED),
     ] {
-        let (target, backend, server) = serve(Reply {
+        let (target, client, server) = serve(Reply {
             status,
             ..Reply::default()
         });
 
-        let captured = backend
+        let captured = client
             .fetch(Request {
                 method: &method,
                 target: &target,
@@ -287,17 +287,17 @@ fn head_and_bodyless_statuses_preserve_representation_length() {
 
 #[test]
 fn caps_count_reconstructed_bytes_and_distinguish_exact_completion() {
-    let (target, backend, server) = serve(Reply::default());
-    let complete = backend.fetch(request::get(&target)).unwrap();
+    let (target, client, server) = serve(Reply::default());
+    let complete = client.fetch(request::get(&target)).unwrap();
     server.join().unwrap();
 
     for (cap, truncated) in [
         (complete.response.len(), None),
         (complete.response.len() - 1, Some(Truncation::Length)),
     ] {
-        let (target, backend, server) = serve(Reply::default());
+        let (target, client, server) = serve(Reply::default());
 
-        let captured = backend
+        let captured = client
             .max_response_length(Some(cap as u64))
             .fetch(request::get(&target))
             .unwrap();
@@ -314,12 +314,12 @@ fn stalled_and_reset_streams_retain_truncated_payloads() {
         (Finish::Stall, Truncation::Time),
         (Finish::Reset, Truncation::Disconnect),
     ] {
-        let (target, backend, server) = serve(Reply {
+        let (target, client, server) = serve(Reply {
             finish,
             ..Reply::default()
         });
 
-        let captured = backend
+        let captured = client
             .io_timeout(Some(Duration::from_millis(100)))
             .fetch(request::get(&target))
             .unwrap();
@@ -332,13 +332,13 @@ fn stalled_and_reset_streams_retain_truncated_payloads() {
 
 #[test]
 fn timeout_before_headers_fails() {
-    let (target, backend, server) = serve(Reply {
+    let (target, client, server) = serve(Reply {
         before_headers: true,
         ..Reply::default()
     });
 
     assert!(
-        backend
+        client
             .io_timeout(Some(Duration::from_millis(100)))
             .fetch(request::get(&target))
             .is_err()
@@ -349,13 +349,13 @@ fn timeout_before_headers_fails() {
 #[test]
 fn content_coding_is_preserved_without_decompression() {
     const GZIP: &[u8] = b"\x1f\x8b\x08\x00\x00\x00\x00\x00\x02\xff\xcb\x48\xcd\xc9\xc9\x07\x00\x86\xa6\x10\x36\x05\x00\x00\x00";
-    let (target, backend, server) = serve(Reply {
+    let (target, client, server) = serve(Reply {
         body: GZIP,
         encoded: true,
         ..Reply::default()
     });
 
-    let captured = backend.fetch(request::get(&target)).unwrap();
+    let captured = client.fetch(request::get(&target)).unwrap();
     server.join().unwrap();
 
     assert_eq!(captured.entity_body().unwrap().as_ref(), GZIP);
@@ -364,10 +364,10 @@ fn content_coding_is_preserved_without_decompression() {
 
 #[test]
 fn response_head_must_fit_the_capture_limit() {
-    let (target, backend, server) = serve(Reply::default());
+    let (target, client, server) = serve(Reply::default());
 
     assert!(
-        backend
+        client
             .max_response_length(Some(1))
             .fetch(request::get(&target))
             .is_err()
@@ -379,12 +379,12 @@ fn response_head_must_fit_the_capture_limit() {
 /// machine. The server stalls until the client closes the connection, so it cannot end first.
 #[test]
 fn absolute_deadline_truncates_an_http2_response() {
-    let (target, backend, server) = serve(Reply {
+    let (target, client, server) = serve(Reply {
         finish: Finish::Stall,
         ..Reply::default()
     });
 
-    let captured = backend
+    let captured = client
         .io_timeout(None)
         .fetch_by(
             request::get(&target),

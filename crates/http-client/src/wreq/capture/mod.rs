@@ -15,14 +15,14 @@ use wreq::IntoEmulation;
 use wreq::connection_observer::{ConnectionEvent, ConnectionObserver};
 use wreq::header::OrigHeaderMap;
 
-use super::{WreqBackend, backend_error};
+use super::{WreqClient, other};
 use crate::framing::{ResponseCapture, ResponseError, Truncation};
 use crate::message::ResponseMetadata;
 use crate::reconstruct::reconstruct_request;
 use crate::{CapturedExchange, Error, Fidelity, Request, TlsVersion};
 
-impl WreqBackend {
-    /// Build the isolated client with the selected transport settings and capture observer.
+impl WreqClient {
+    /// Build the isolated `wreq` client with the selected transport settings and capture observer.
     ///
     /// Returns the profile's header ordering separately, for the request callback to apply.
     fn client(&self, tap: Arc<Tap>) -> Result<(wreq::Client, OrigHeaderMap), Error> {
@@ -54,7 +54,7 @@ impl WreqBackend {
         if let Some(store) = &self.cert_store {
             builder = builder.tls_cert_store(store.clone());
         }
-        let client = builder.build().map_err(backend_error)?;
+        let client = builder.build().map_err(other)?;
         Ok((client, orig_headers))
     }
 
@@ -84,7 +84,7 @@ impl WreqBackend {
         if let Some(body) = body {
             request = request.body(body.to_vec());
         }
-        let mut request: http::Request<wreq::Body> = request.build().map_err(backend_error)?.into();
+        let mut request: http::Request<wreq::Body> = request.build().map_err(other)?.into();
         http2::observe_headers(&mut request, orig_headers, tap.clone());
         let sent_target = request.uri().clone();
         let date = Utc::now();
@@ -271,10 +271,7 @@ impl Tap {
         request: http::Request<wreq::Body>,
         head: bool,
     ) -> Result<(), Error> {
-        let mut response = client
-            .execute(request.into())
-            .await
-            .map_err(backend_error)?;
+        let mut response = client.execute(request.into()).await.map_err(other)?;
         let h2 = response.version() == Version::HTTP_2;
         if h2 {
             self.h2_head(response.status(), response.headers(), head)?;
@@ -295,7 +292,7 @@ impl Tap {
                     self.end(None);
                     return Ok(());
                 }
-                Err(error) => return Err(backend_error(error)),
+                Err(error) => return Err(other(error)),
             }
         }
         if h2 {

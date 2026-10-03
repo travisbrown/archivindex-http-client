@@ -1,7 +1,7 @@
 //! HTTP/1.1 message reconstruction from parsed parts.
 //!
-//! These functions rebuild HTTP/1.1 messages for clients that expose parsed parts but not the
-//! serialized message. Reconstruction uses the [`http`] crate's lowercased header names and the
+//! These functions rebuild HTTP/1.1 messages for HTTP libraries that expose parsed parts but not
+//! the serialized message. Reconstruction uses the [`http`] crate's lowercased header names and the
 //! status code's canonical reason phrase; providing a body also rewrites its framing. A
 //! reconstructed message is therefore not the bytes the origin sent.
 //!
