@@ -1,0 +1,64 @@
+[package]
+name = "archivindex-http-client"
+version.workspace = true
+description = "HTTP clients that capture the request and response messages of each exchange"
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+readme.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/archivindex-http-client"
+keywords = ["http", "client", "capture"]
+categories = ["web-programming::http-client"]
+# The optional observer API requires workspace-level patches in consuming applications.
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+default = []
+# Browser emulation and HTTP/2 require Rust 1.98 and the patches in the workspace manifest.
+wreq = ["dep:wreq", "dep:wreq-proto", "dep:wreq-util", "dep:serde", "tokio/sync", "tokio/macros"]
+
+[dependencies]
+chrono.workspace = true
+fluent-uri.workspace = true
+http.workspace = true
+http-body-util.workspace = true
+reqwest.workspace = true
+rustls.workspace = true
+serde = { workspace = true, optional = true }
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt", "time"] }
+url.workspace = true
+webpki-roots.workspace = true
+wreq = { workspace = true, optional = true, features = ["tokio-rt", "webpki-roots", "socks"] }
+wreq-proto = { workspace = true, optional = true }
+wreq-util = { workspace = true, optional = true, features = ["emulation", "emulation-serde"] }
+
+[dev-dependencies]
+criterion.workspace = true
+h2.workspace = true
+rcgen.workspace = true
+# Exercise feature unification: capture must retain content coding even when decoders are built.
+reqwest = { workspace = true, features = ["gzip", "brotli", "deflate", "zstd"] }
+tokio = { workspace = true, features = ["net"] }
+tokio-rustls.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[[test]]
+name = "wreq_loopback"
+required-features = ["wreq"]
+
+[[test]]
+name = "wreq_http2"
+required-features = ["wreq"]
+
+[[bench]]
+name = "response_capture"
+harness = false

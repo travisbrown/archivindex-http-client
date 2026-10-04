@@ -1,18 +1,18 @@
 # archivindex-http-client
 
-![GitHub last commit][last-commit-badge]
-[![build][build-badge]][build]
-[![license][license-badge]][gpl-3.0]
+HTTP clients for the [Archivindex](https://github.com/travisbrown/archivindex) projects that store
+the request and response of each exchange. Every fetch makes one request on a new connection.
+Clients do not follow redirects, retry, keep cookies, decode content, pool connections, or read
+proxy settings from the environment.
 
-A Rust library of HTTP clients that capture the request and response messages of each exchange,
-for the [Archivindex][archivindex] projects. A fetch is exactly one request and one response on a
-new connection. No client follows redirects, retries, keeps cookies, decodes content, pools
-connections, or reads proxy settings from the environment, so the stored messages describe
-everything that happened.
+The workspace also contains
+[`archivindex-http-client-challenge`](archivindex-http-client-challenge/README.md). Its `Session`
+wraps a client, automatically answers Sucuri, Varnish, and Simply.com challenges, and retains
+clearance cookies. It returns every exchange, including challenge and verification responses.
 
 ## Clients
 
-Every client implements the `Client` trait and returns a `CapturedExchange`.
+All clients implement `Client` and return a `CapturedExchange`.
 
 | Client          | Feature | Protocols           | TLS       | Stored messages                              |
 | --------------- | ------- | ------------------- | --------- | -------------------------------------------- |
@@ -20,15 +20,8 @@ Every client implements the `Client` trait and returns a `CapturedExchange`.
 | `ReqwestClient` |         | HTTP/1.1            | rustls    | Reconstructed                                |
 | `WreqClient`    | `wreq`  | HTTP/1.1 and HTTP/2 | BoringSSL | Exact for HTTP/1.1, reconstructed for HTTP/2 |
 
-`Recorder` serializes the request itself and stores the response verbatim, so header spelling,
-reason phrases, chunk extensions, and trailers are the origin's. `ReqwestClient` rebuilds both
-messages from the parts `reqwest` exposes. `WreqClient` adds browser emulation, and HTTP/2 when
-asked for it; see [the `wreq` feature](#the-wreq-feature).
-
-`Recorder` and `ReqwestClient` trust the Mozilla roots of `webpki-roots` and use `aws-lc-rs`,
-whatever crypto provider the process has installed. Their `tls_config` setters replace that
-configuration, for example to trust a private certificate authority. Both offer only `http/1.1` in
-ALPN, whatever the configuration offers, because neither speaks HTTP/2.
+Use `Recorder` when the original HTTP/1 bytes matter. `ReqwestClient` reconstructs messages from
+parsed parts. `WreqClient` adds browser emulation and optional HTTP/2 support.
 
 ## Usage
 
@@ -46,79 +39,115 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     })?;
 
     println!("{}", captured.response_metadata.status);
-    println!("{}", String::from_utf8_lossy(&captured.request));
     println!("{} body bytes", captured.entity_body()?.len());
-
     Ok(())
 }
 ```
 
-`Client::fetch_by` takes a deadline as well. Calls are synchronous, and the `reqwest` and `wreq`
-clients may be called from inside a Tokio runtime, because each fetch runs on a runtime and thread
-of its own.
+`Request` borrows its method, target, headers, and body. `Client::fetch_by` also takes an absolute
+`Instant` deadline. Calls are synchronous. The reqwest and wreq clients run each fetch on a scoped
+thread with its own Tokio runtime, so callers can already be inside a runtime.
 
-Every client adds a `host` header when the caller supplies none, and an HTTP/1.1 request without a
-`connection` header gets `connection: close`. The body given to a fetch frames its request: every
-client drops `transfer-encoding` and `content-length` headers that the caller supplies, and frames
-a provided body with `content-length`.
+Clients add a missing `host` header and default HTTP/1.1 requests to `connection: close`. They
+remove caller-supplied `content-length` and `transfer-encoding` fields and frame a supplied body
+with its actual length. `Some(&[])` supplies an empty body; `None` supplies no body.
 
-Userinfo in the target is never sent. Credentials reach the origin only in an `authorization`
-header that the caller supplies, while `CapturedExchange::target_uri` keeps the URI as it was
-given.
+Targets must be absolute HTTP or HTTPS URIs. Validation happens before network activity. URI
+userinfo is removed from the transport target; only an explicit `authorization` header supplies
+origin credentials. `CapturedExchange::target_uri` retains the URI supplied by the caller.
 
-## Captured exchanges
+## Stored exchanges
 
-A `CapturedExchange` holds the stored request and response messages, both in HTTP/1 form, and these
-facts about the exchange:
+The request and response are stored in HTTP/1 form, even when the connection used HTTP/2.
+`fidelity` distinguishes exact bytes from reconstructed messages; `http_protocol` records the
+protocol used on the connection. Interim `1xx` responses are discarded, so the stored response
+starts at the final status line.
 
-- `fidelity` says whether the stored messages are the exact bytes that crossed the connection
-  (`Exact`) or were rebuilt from parsed parts (`Reconstructed`).
-- `http_protocol` is the HTTP version the exchange used on its connection (`Http1` or `Http2`),
-  whatever form its messages are stored in.
-- `tls_version` is the negotiated TLS version. It is absent for a plaintext exchange, and when the
-  client cannot observe it. No client guesses a version.
-- `ip_address` is the origin address. It is absent for a proxied exchange.
-- `truncated` says why a response is incomplete (`Length`, `Time`, or `Disconnect`), and is absent
-  for a complete response.
-- `date` and `fetch_time` record when network activity began and how long the exchange took.
+`response_metadata` contains the status, header values, and body offset. `stored_body()` returns
+the bytes after the header section without changing them. `entity_body()` removes transfer
+coding and preserves content coding. It returns an empty body for `HEAD`, `204`, and `304`
+responses, and an error when a declared chunked body has incomplete framing or trailers.
 
-The stored response starts at the final status line, since interim `1xx` responses are discarded.
-`stored_body` returns the bytes after its header section as they were stored, and `entity_body`
-returns them with transfer coding removed. Content coding is never removed. The response to a `HEAD`
-request, and a `204` or `304` response, has an empty entity-body. `entity_body` fails for a chunked
-response that was truncated, because its chunked body is incomplete, and it gives the same result
-whichever client stored the response.
+`tls_version` is the negotiated TLS version when the client can observe it. It is absent for
+plaintext exchanges and for reqwest's SOCKS connections. `ip_address` identifies the origin and
+is absent for proxied exchanges. `date` records when network activity began; `fetch_time` records
+its elapsed duration. `truncated` is absent for a complete response and otherwise records
+`Length`, `Time`, or `Disconnect`.
 
-The `message` module parses stored messages, the `body` module removes transfer coding from them,
-the `framing` module finds the end of a response as its bytes arrive, and the `reconstruct` module
-builds HTTP/1.1 messages from parsed parts.
+### Reconstruction
+
+The reqwest client builds the stored request from the parts it submits, after URL normalization
+and the addition of default headers. For example, `/a/../b` becomes `/b`. This describes the
+expected request; reqwest does not expose the bytes written to the connection.
+
+Reconstructed response headers use lowercase names, normalized whitespace, and the status code's
+canonical reason phrase. Repeated fields and content-encoded data are preserved. A chunked body
+gets one generated chunk per delivered body frame, followed by its trailers. The origin's chunk
+boundaries and extensions are lost. Content decoding stays disabled even when another dependency
+enables reqwest's compression features.
+
+Exact HTTP/1 captures preserve header casing, duplicate fields, reason phrases, chunk extensions,
+and trailers. The recorder serializes its own request and stores the response verbatim. Wreq
+observes plaintext transport reads and writes.
+
+## HTTP policies and stored messages
+
+`prepare` combines request headers, normalizes URL targets, and rejects or redacts embedded
+credentials. `redirect` resolves HTTP locations and rewrites methods, bodies, and origin-specific
+headers. The challenge crate's `Session` combines redirects and challenge answers in one sequence
+when redirect following is enabled.
+
+`retry` supplies bounded exponential delays, `Retry-After` parsing (including obsolete HTTP date
+forms), and status, transport-error, and truncation classification. Callers decide whether a
+request is safe to repeat and perform the wait. A configured response length bound is not treated
+as a transient failure.
+
+`conditional` parses combined `Vary` declarations, matches selecting request fields, and applies
+ETag and Last-Modified validators. Missing and empty fields remain distinct. An unreadable `Vary`
+declaration or unavailable selecting request makes the representation unselectable. Persistence
+and application-specific representation identities belong to the caller.
+
+`body::entity_body` requires complete transfer framing. For existing stored messages,
+`body::entity_body_with(message, Decoding::Stored)` also accepts a body already dechunked under
+stale transfer headers, and a final zero-size chunk without its trailers. Both policies preserve
+content coding and reject unsupported transfer codings or incomplete chunk data.
+`body::message_body` returns the stored bytes after the header section without decoding.
 
 ## Limits and timeouts
 
-Each client starts with a 30 second timeout for connecting, a 30 second timeout for I/O, and a
-256 MiB limit on the stored response. Every setter accepts `None` to remove its bound.
+Connection and I/O timeouts default to 30 seconds. The stored response limit defaults to 256 MiB.
+Their setters accept `None` to remove a bound.
 
-The response limit counts stored message bytes, including the header section and transfer framing.
-A response that ends exactly at the limit is complete, not truncated.
+The response limit includes the final header section and transfer framing. It counts stored
+bytes, including generated framing for reconstructed responses. Each header section has a
+separate 64 KiB bound. Interim headers do not consume the final response limit. A response that
+ends exactly at the limit is complete.
 
-Failures are reported in the same way by every client. A failure before a complete response header
-section is an error, as is a header section that does not fit the response limit. A failure with an
-I/O cause is an `Error::Io` of that kind, so a refused connection can be told from a timeout, and a
-header section that does not arrive in time is a timed-out I/O error. After the header section, a
-size limit, a disconnect, a timeout, or a passed deadline returns the response received so far,
-with `truncated` set.
+A failure before a complete final header section is an error. After that section, a size limit,
+disconnect, timeout, or expired deadline retains the captured prefix and sets `truncated`.
+Malformed framing remains an error. I/O failures preserve their error kind, including
+`ConnectionRefused` and `TimedOut`.
 
-The timeouts cover slightly different spans in each client:
+| Client          | Connection timeout | I/O timeout                                      | Deadline     |
+| --------------- | ------------------ | ------------------------------------------------ | ------------ |
+| `Recorder`      | Each address tried | Each socket read or write                        | Excludes DNS |
+| `ReqwestClient` | DNS, TCP, and TLS  | Wait for the response head, then each body frame | Wall clock   |
+| `WreqClient`    | DNS, TCP, and TLS  | Idle time after connecting                       | Wall clock   |
 
-| Client          | `connect_timeout`                  | `io_timeout`                                             | Deadline     |
-| --------------- | ---------------------------------- | -------------------------------------------------------- | ------------ |
-| `Recorder`      | Each resolved address              | Each read or write                                       | Excludes DNS |
-| `ReqwestClient` | Connecting, with the TLS handshake | Each wait for the header section or for more of the body | Wall clock   |
-| `WreqClient`    | Connecting, with DNS and TLS       | Idle time after connecting                               | Includes DNS |
+The recorder uses blocking DNS. Reqwest's first I/O wait includes connecting and sending the
+request. Wreq measures HTTP/2 progress through outgoing request frames and decoded response data;
+connection control traffic cannot keep a stalled exchange alive. A system DNS lookup already
+running when an asynchronous client times out may finish in the background.
 
-## Proxies
+## TLS and proxies
 
-Each client has a `proxy` setter for a SOCKS5 proxy:
+The recorder and reqwest trust `webpki-roots` and explicitly select the `aws-lc-rs` crypto provider.
+They do not depend on the operating system trust store or the process's default provider. Their
+`tls_config` setters accept a replacement configuration, for example to trust a private
+certificate authority. Both restrict ALPN to `http/1.1`. Wreq accepts custom roots through
+`tls_cert_store`. Default configurations verify certificates and hostnames.
+
+Every client accepts the same SOCKS5 proxy URIs:
 
 ```rust,no_run
 use archivindex_http_client::recorder::Recorder;
@@ -127,55 +156,54 @@ let client = Recorder::new().proxy(Some("socks5h://127.0.0.1:1080"))?;
 # Ok::<(), archivindex_http_client::InvalidProxy>(())
 ```
 
-Use `socks5h://` to resolve destination hostnames through the proxy, or `socks5://` for local DNS.
-The default proxy port is 1080. Username and password authentication is supported with
-`socks5h://user:password@host:port`, with reserved characters in the credentials percent-encoded.
-Every client accepts the same proxy URIs and rejects other schemes.
+Use `socks5h://` for proxy DNS or `socks5://` for local DNS. The default port is 1080. Optional
+username and password credentials are percent-encoded, as in
+`socks5h://user:p%40ssword@host:1080`. Other schemes are rejected.
 
-A proxy failure never falls back to a direct connection. Timeouts and deadlines also bound SOCKS
-negotiation. The stored messages exclude proxy negotiation and authentication. Proxied exchanges
-have no `ip_address`, because the socket peer is the proxy and SOCKS does not reliably identify the
-origin address.
+Proxy failures never fall back to direct connections. SOCKS negotiation is subject to transport
+timeouts and deadlines, and is excluded from stored messages. Proxied exchanges omit the origin
+IP because the socket peer is the proxy and SOCKS does not reliably identify the origin address.
 
-## The reqwest client
+## Optional wreq client
 
-`ReqwestClient` builds the stored request from the parts it gives to `reqwest`, which it completes
-first so that `reqwest` has nothing to add. For example, it supplies the `accept: */*` that
-`reqwest` adds when the caller supplies no `accept` header. The tests compare the stored request
-with the bytes an origin receives, but the client does not observe the connection, so the stored
-request is what `reqwest` is expected to send and not a record of what it sent.
+Enable the `wreq` feature for browser emulation. It requires Rust 1.98 or later, a C and C++
+compiler, CMake, and libclang to build BoringSSL. The other clients require Rust 1.88.
 
-The request target is the one `reqwest` sends after normalizing the URI (for example, `/a/../b`
-becomes `/b`), while `CapturedExchange::target_uri` remains the URI the caller asked for.
+```rust,ignore
+use archivindex_http_client::wreq::{WreqClient, parse_profile};
 
-The stored response differs from the origin's bytes in these ways:
+let client = WreqClient::new(parse_profile("chrome_136")?);
+let http2_client = client.clone().http2(true);
+let firefox = client.profile(parse_profile("firefox_136")?);
+```
 
-- Field names are lowercased, and the whitespace around field values is normalized.
-- The reason phrase is the canonical one for the status code.
-- A chunked body is stored chunked, with one chunk for each piece of body data `reqwest` delivers.
-  Chunk boundaries are therefore not necessarily the origin's, and chunk extensions are lost.
-  Trailers are kept.
+The profile supplies TLS settings, default headers, header ordering and casing, and HTTP/2
+settings. Explicit request headers override profile values. Unknown profile names return an
+error. Applications can also supply `wreq_util::Profile` directly by depending on the pinned
+`wreq-util` version. Browser emulation does not guarantee access to a site.
 
-Content coding is kept. The client turns off each of `reqwest`'s decoders, so this holds even when
-another crate in the build enables `reqwest`'s `gzip`, `brotli`, `deflate`, or `zstd` feature.
+HTTP/2 is disabled by default, restricting ALPN to `http/1.1`. With `.http2(true)`, the client
+offers the profile's protocols and uses HTTP/2 when the server selects it, otherwise HTTP/1.1.
+Restricting ALPN changes that part of the emulated browser's TLS handshake.
 
-The negotiated TLS version is reported for direct connections only, because `reqwest` does not
-expose it for a connection made through a SOCKS proxy.
+HTTP/2 messages are reconstructed as HTTP/1.1 with `Fidelity::Reconstructed` and
+`HttpProtocol::Http2`. Finalized request headers come from the codec after defaults and removal
+of connection-specific fields. Outgoing frames must establish one complete request; an
+additional stream or connection fails the capture. Pseudo-headers become the request line,
+`host`, or response status. Responses with bodies use generated chunked framing so trailers stay
+separate from the initial headers. `HEAD`, `204`, and `304` keep their bodyless form and
+representation headers. Binary frames, HPACK state, and original framing declarations are not
+stored. The codec also bounds decoded response headers and trailers before reconstruction.
 
-Use `Recorder` when the stored bytes must be the ones that crossed the connection.
+Each fetch owns its client, observer, runtime, and connection. Concurrent fetches cannot share
+capture state. For HTTP/1, a codec or write failure invalidates an unfinished capture. An already
+complete or truncated response is retained; a later shutdown failure does not invalidate it.
 
-## The `wreq` feature
+### Dependency patches
 
-The `wreq` feature adds `WreqClient`, which performs exchanges through BoringSSL with the TLS and
-HTTP/2 settings of a browser profile. It is off by default because of what it requires:
-
-- Rust 1.98 or later (the rest of the crate requires Rust 1.88).
-- A C and C++ compiler, CMake, and libclang, to build BoringSSL.
-- A `wreq` fork that lets the client observe plaintext connection traffic and negotiated TLS
-  versions, together with unreleased `btls` revisions that the fork depends on.
-
-Cargo does not propagate dependency patches, so a workspace that enables the feature must copy
-these entries from this repository's [manifest](Cargo.toml) into its own:
+The observer hooks are not released upstream. The crate uses a pinned wreq fork and matching TLS
+revisions. Cargo does not propagate dependency patches. A consuming workspace that enables `wreq`
+must copy these entries into its root manifest, including when using a local path dependency:
 
 ```toml
 [patch.crates-io]
@@ -185,131 +213,41 @@ btls-sys = { git = "https://github.com/0x676e67/btls", rev = "9d859deefab0183e2f
 tokio-btls = { git = "https://github.com/0x676e67/btls", rev = "9d859deefab0183e2fccf91204c818c8d1805b27" }
 ```
 
-The crate pins exact versions of `wreq`, `wreq-proto`, and `wreq-util`, because the fork tracks one
-`wreq` release.
-
-### Profiles
-
-A client is created with a profile, and `profile` replaces it:
-
-```rust,ignore
-use archivindex_http_client::wreq::{WreqClient, parse_profile};
-use wreq_util::Profile;
-
-let client = WreqClient::new(Profile::Chrome136);
-let client = client.profile(parse_profile("firefox_136")?);
-```
-
-Profiles are the `Profile` type of `wreq-util`. An application that names its variants must depend
-on `wreq-util` at the exact version this crate pins. `parse_profile` looks a profile up by its
-configuration name, such as `chrome_136`, and fails for an unknown name, so an application that
-selects profiles by name needs no dependency of its own.
-
-The profile supplies the TLS settings, the HTTP/2 settings, and the default request headers with
-their order and casing. Request headers passed to a fetch override the profile's values. Browser
-emulation may improve access, but it does not guarantee that a site accepts the request.
-
-### HTTP/2
-
-HTTP/2 is used only by a client that enables it:
-
-```rust,ignore
-let client = WreqClient::new(Profile::Chrome136).http2(true);
-```
-
-With HTTP/2 enabled, the client offers the profile's ALPN protocols and uses HTTP/2 when the
-origin selects it, falling back to HTTP/1.1 otherwise. Without it, the client offers only
-`http/1.1`. A browser profile normally offers `h2` too, so the `ClientHello` of a client without
-HTTP/2 differs from the emulated browser's in its ALPN extension.
-
-An HTTP/2 exchange is stored as HTTP/1.1 messages, with `Fidelity::Reconstructed` and
-`HttpProtocol::Http2`. The stored messages are a reconstruction, not a transcript of binary HTTP/2
-frames:
-
-- Pseudo-headers become the request method, target, and `host` header, or the response status.
-  Reason phrases and the header order of the response are produced by the reconstruction.
-- The request has the finalized headers that the codec sends, after defaults, framing, and the
-  removal of connection-specific headers, in the order and casing of the profile. The outgoing
-  frames must show one complete request. A second stream or connection fails the fetch.
-- The response keeps content-encoded data and repeated headers. A response with a body is stored
-  with generated chunked framing in place of the original `content-length`, so that trailers stay
-  separate from the initial headers. Responses to `HEAD`, and `204` and `304` responses, keep their
-  bodiless form and their representation lengths.
-- The original frame bytes, HPACK state, and framing declarations are not kept.
-
-### Capture contract
-
-Each fetch owns one `wreq` client, one connection observer, and one current-thread Tokio runtime on
-a scoped thread, and disposes of its tasks and connection before it returns. This favors isolation
-over reuse, and concurrent fetches cannot share observer state or connections. A system DNS lookup
-that is already running may finish in the background after a timeout.
-
-HTTP/1 messages are the observed plaintext bytes, with reason phrases, header formatting, duplicate
-headers, chunk extensions, and trailers as they crossed the connection. A codec error fails an
-unfinished capture unless the observer has already found the end of the message or a truncation. A
-failed write or flush also fails an unfinished capture, while a failed shutdown does not invalidate
-a complete response.
-
-For HTTP/2, the response limit counts the reconstructed message, not connection traffic or payload
-bytes alone, and the codec applies its header-list bound to headers and trailers before
-reconstruction. Idle time tracks outgoing request frames and decoded response progress, so
-connection control traffic cannot keep a stalled response alive.
-
-`tls_cert_store` replaces the default Mozilla root certificates. There is no setter for an
-arbitrary `wreq` client, because a client with redirects, retries, pooling, or other protocol
-settings would make the stored messages misleading.
+The manifest pins matching versions of `wreq`, `wreq-proto`, and `wreq-util`. Publication is
+disabled while the optional client depends on these patches.
 
 ## Development
 
-The crate requires Rust 1.88 or later. The `wreq` feature requires Rust 1.98 and a native BoringSSL
-toolchain: a C and C++ compiler, CMake, and libclang.
+The `archivindex-http-client/` directory contains the HTTP client crate, its tests, and its
+benchmarks. The root manifest defines workspace members, shared package metadata, dependency
+versions, lints, and dependency patches. `archivindex-http-client-challenge/` contains the challenge
+recognizers, bounded proof solvers, cookie jar, and automatic session. Each additional crate belongs
+in its own directory and must be listed in `workspace.members`.
 
-All three clients run one [conformance suite](tests/support/client_conformance.rs) against
-scripted loopback servers. It covers framing, truncation, timeouts, TLS, and concurrency, and a
-[second suite](tests/support/proxy_conformance.rs) covers proxies. `Recorder` and `WreqClient`
-also run an [exact capture suite](tests/support/exact_conformance.rs). Further tests cover the
-reconstruction that `ReqwestClient` performs, the TLS configuration of the `rustls` clients,
-profile selection, and HTTP/2. No test makes a request outside the loopback interface.
+`framing` locates response boundaries and applies limits. `message` parses stored messages;
+`body` extracts entity-bodies; `reconstruct` serializes parsed parts into HTTP/1 messages.
+Transport setup, request preparation, and error classification stay private.
 
-Run the tests and build the documentation with:
-
-```console
-cargo test --locked
-RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps
-```
-
-Add `--features wreq` to either command to include the `wreq` client.
-
-Run the response framing benchmarks with:
-
-```console
-cargo bench --bench response_capture
-```
-
-The cases cover small responses, long headers, and long chunk extensions, each delivered in 1-byte,
-16-byte, and 8 KiB fragments. They use in-memory messages and make no network requests.
-
-The remaining checks that CI runs are:
-
-```console
+```sh
 cargo +nightly fmt --all -- --check
-cargo clippy --locked --all-targets --features wreq -- -D warnings
-cargo test --locked --benches
-taplo fmt --check --diff
-taplo lint
-rumdl check .
-cargo deny check
-cargo archivindex-build check
+cargo clippy --workspace --locked --all-targets --all-features -- -D warnings
+cargo test --workspace --locked --no-default-features
+cargo test --workspace --locked --all-features
+cargo +1.88.0 check --workspace --locked --all-targets --no-default-features
+cargo bench -p archivindex-http-client --locked --bench response_capture -- --test
+RUSTDOCFLAGS='-D warnings' cargo doc --workspace --locked --all-features --no-deps
 ```
+
+All clients run shared conformance and proxy tests against local HTTP, TLS, and SOCKS servers.
+Separate suites check exact capture, HTTP/2, and TLS configuration. Tests cover framing across
+read boundaries, every cap through chunked trailers, deadlines, disconnects, authentication,
+profile overrides, concurrent calls, and calls inside Tokio. The in-memory benchmarks exercise
+short responses, long headers, and long chunk extensions at different read sizes.
+
+CI checks both feature configurations on Linux, baseline clients on macOS and Windows, Rust 1.88
+compatibility, and fresh compatible dependencies on stable Rust. It also checks formatting,
+documentation, and the dependency policy.
 
 ## License
 
-This project is licensed under the [GNU General Public License, version 3][gpl-3.0]; see
-[LICENSE](LICENSE) for the full text.
-
-[archivindex]: https://github.com/travisbrown/archivindex
-[build]: https://github.com/travisbrown/archivindex-http-client/actions/workflows/ci.yml
-[build-badge]: https://github.com/travisbrown/archivindex-http-client/actions/workflows/ci.yml/badge.svg
-[gpl-3.0]: https://www.gnu.org/licenses/gpl-3.0.html
-[last-commit-badge]: https://img.shields.io/github/last-commit/travisbrown/archivindex-http-client
-[license-badge]: https://img.shields.io/badge/license-GPL--v3-blue
+GPL-3.0-only. See [LICENSE](LICENSE).

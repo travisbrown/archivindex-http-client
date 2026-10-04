@@ -1,18 +1,6 @@
 [workspace]
+members = ["archivindex-http-client", "archivindex-http-client-challenge"]
 resolver = "3"
-
-# The `wreq` feature needs an observer API that is not released. A patch rather than a plain
-# dependency, because it must also redirect the copy of `wreq` reached through `wreq-util`, leaving
-# exactly one `wreq` in the graph. Patches do not propagate, so a workspace that enables the feature
-# must repeat these entries; see README.md. The entry names a commit, so that such a workspace
-# builds the same fork whatever its lockfile holds.
-[patch.crates-io]
-wreq = { git = "https://github.com/travisbrown/wreq", rev = "108701e00f33b40132e78d28abce8b4f6e3a6b19" }
-
-# The fork uses btls APIs not yet published in 0.5.6. Keep its TLS crates at one revision.
-btls = { git = "https://github.com/0x676e67/btls", rev = "9d859deefab0183e2fccf91204c818c8d1805b27" }
-btls-sys = { git = "https://github.com/0x676e67/btls", rev = "9d859deefab0183e2fccf91204c818c8d1805b27" }
-tokio-btls = { git = "https://github.com/0x676e67/btls", rev = "9d859deefab0183e2fccf91204c818c8d1805b27" }
 
 [workspace.package]
 version = "0.1.0"
@@ -24,16 +12,23 @@ license = "GPL-3.0-only"
 repository = "https://github.com/travisbrown/archivindex-http-client"
 
 [workspace.dependencies]
+archivindex-http-client = { version = "0.1.0", path = "archivindex-http-client" }
 chrono = "0.4"
 criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
+data-encoding = "2.11.1"
 fluent-uri = "0.4"
 h2 = "0.4.19"
 http = "1"
 http-body-util = "0.1"
 rcgen = "0.14"
-reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "socks"] }
+reqwest = { version = "0.13.5", default-features = false, features = [
+  "rustls-no-provider",
+  "socks",
+] }
 rustls = "0.23.45"
 serde = "1"
+serde_json = "1.0.151"
+sha2 = "0.11.0"
 thiserror = "2"
 tokio = "1"
 tokio-rustls = "0.26.5"
@@ -54,70 +49,10 @@ pedantic = { level = "warn", priority = -1 }
 nursery = { level = "warn", priority = -1 }
 missing_errors_doc = "allow"
 
-[package]
-name = "archivindex-http-client"
-description = "HTTP clients that capture the request and response messages of each exchange"
-authors.workspace = true
-repository.workspace = true
-documentation = "https://docs.rs/crate/archivindex-http-client/"
-keywords = ["http", "client", "capture", "web", "archive"]
-categories = ["web-programming::http-client"]
-edition.workspace = true
-rust-version.workspace = true
-readme.workspace = true
-license.workspace = true
-version.workspace = true
-
-[lints]
-workspace = true
-
-[package.metadata.docs.rs]
-all-features = true
-rustdoc-args = ["--cfg", "docsrs"]
-
-[features]
-# The BoringSSL client with browser emulation and opt-in HTTP/2. It needs Rust 1.98, a native
-# toolchain, and the patches described in README.md.
-wreq = ["dep:serde", "dep:wreq", "dep:wreq-proto", "dep:wreq-util", "tokio/macros", "tokio/sync"]
-
-[dependencies]
-chrono.workspace = true
-fluent-uri.workspace = true
-http.workspace = true
-http-body-util.workspace = true
-reqwest.workspace = true
-rustls.workspace = true
-# Profile names are looked up through the profile type's `Deserialize` implementation.
-serde = { workspace = true, optional = true }
-thiserror.workspace = true
-tokio = { workspace = true, features = ["rt", "time"] }
-url.workspace = true
-webpki-roots.workspace = true
-# Redirected to the observer-enabled fork by the patch above; see README.md.
-wreq = { workspace = true, optional = true, features = ["tokio-rt", "webpki-roots", "socks"] }
-# The finalized-header callback used by wreq itself.
-wreq-proto = { workspace = true, optional = true }
-wreq-util = { workspace = true, optional = true, features = ["emulation", "emulation-serde"] }
-
-[dev-dependencies]
-criterion.workspace = true
-# Local TLS HTTP/2 fixtures.
-h2.workspace = true
-# The TLS tests serve self-signed certificates.
-rcgen.workspace = true
-# Another crate in a consumer's build can enable these decoders, so the tests run with them enabled.
-reqwest = { workspace = true, features = ["brotli", "deflate", "gzip", "zstd"] }
-tokio = { workspace = true, features = ["net"] }
-tokio-rustls.workspace = true
-
-[[bench]]
-name = "response_capture"
-harness = false
-
-[[test]]
-name = "wreq_http2"
-required-features = ["wreq"]
-
-[[test]]
-name = "wreq_loopback"
-required-features = ["wreq"]
+[patch.crates-io]
+# Apply the observer fork to both direct and transitive uses of wreq. Consuming workspaces
+# enabling wreq must repeat these patches; see README.md. The TLS crates share one revision.
+wreq = { git = "https://github.com/travisbrown/wreq", rev = "108701e00f33b40132e78d28abce8b4f6e3a6b19" }
+btls = { git = "https://github.com/0x676e67/btls", rev = "9d859deefab0183e2fccf91204c818c8d1805b27" }
+btls-sys = { git = "https://github.com/0x676e67/btls", rev = "9d859deefab0183e2fccf91204c818c8d1805b27" }
+tokio-btls = { git = "https://github.com/0x676e67/btls", rev = "9d859deefab0183e2fccf91204c818c8d1805b27" }

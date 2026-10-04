@@ -23,8 +23,15 @@ allow = [
   "Unlicense",
   "Zlib",
 ]
-# This package uses GPL-3.0-only; its dependencies use only the licenses allowed above.
-exceptions = [{ crate = "archivindex-http-client", allow = ["GPL-3.0-only"] }]
+# Workspace packages use GPL-3.0-only; dependencies use the licenses allowed above.
+exceptions = [
+  { crate = "archivindex-http-client", allow = [
+    "GPL-3.0-only",
+  ] },
+  { crate = "archivindex-http-client-challenge", allow = [
+    "GPL-3.0-only",
+  ] },
+]
 
 [sources]
 unknown-registry = "deny"
